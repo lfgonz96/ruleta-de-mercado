@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ruleta de Mercado</title>
+<meta name="description" content="Sorteá al azar una acción del S&amp;P 500 y un token del top 50 cripto para investigar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: título + botón global arriba; dos paneles (acción / token), cada uno con rueda, resultado e historial. */
+:root {
+  --bg: #EBEFF1;
+  --surface: #FFFFFF;
+  --ink: #10202A;
+  --muted: #566873;
+  --line: #D2DADF;
+  --chip: #E3E9EC;
+  --rim: #10202A;
+  --stock: #0B6B4D;
+  --on-stock: #FFFFFF;
+  --crypto: #A85A06;
+  --on-crypto: #FFFFFF;
+  --f-display: 'Unbounded', 'Arial Black', system-ui, sans-serif;
+  --f-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --f-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D1418;
+    --surface: #141E24;
+    --ink: #E7EEF1;
+    --muted: #95A5AF;
+    --line: #263640;
+    --chip: #1E2C34;
+    --rim: #2B3C46;
+    --stock: #3DC79A;
+    --on-stock: #062218;
+    --crypto: #F2A648;
+    --on-crypto: #2A1700;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D1418;
+  --surface: #141E24;
+  --ink: #E7EEF1;
+  --muted: #95A5AF;
+  --line: #263640;
+  --chip: #1E2C34;
+  --rim: #2B3C46;
+  --stock: #3DC79A;
+  --on-stock: #062218;
+  --crypto: #F2A648;
+  --on-crypto: #2A1700;
+  color-scheme: dark;
+}
+
+html { color-scheme: light; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-block: 28px 36px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.shell { max-width: 1000px; margin: 0 auto; }
+
+.top { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: flex-end; justify-content: space-between; margin-bottom: 24px; }
+.top > div { min-width: 0; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(26px, 5vw, 38px); line-height: 1.05; letter-spacing: -0.02em; margin: 0 0 10px; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); max-width: 48ch; }
+
+.btn-all {
+  font-family: var(--f-display); font-weight: 700; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;
+  background: var(--ink); color: var(--bg); border: 0; border-radius: 10px; padding: 14px 22px; cursor: pointer;
+}
+.btn-all:disabled { opacity: 0.55; cursor: progress; }
+button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
+.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 20px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.panel.stock { --accent: var(--stock); --on-accent: var(--on-stock); }
+.panel.coin { --accent: var(--crypto); --on-accent: var(--on-crypto); }
+
+.panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+h2 { font-family: var(--f-display); font-weight: 500; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; margin: 0; display: flex; align-items: center; gap: 8px; }
+h2::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.meta { font-family: var(--f-mono); font-size: 12px; color: var(--muted); margin: 0; }
+
+.controls { min-height: 44px; display: flex; align-items: center; font-size: 13px; color: var(--muted); margin: 0; }
+.toggle { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.toggle input { accent-color: var(--accent); margin-top: 3px; width: 16px; height: 16px; flex: none; }
+
+.wheel-wrap { position: relative; width: 100%; max-width: 380px; margin: 8px auto 6px; }
+canvas { display: block; width: 100%; aspect-ratio: 1; }
+.pointer { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); width: 0; height: 0; border-left: 11px solid transparent; border-right: 11px solid transparent; border-top: 24px solid var(--ink); z-index: 2; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35)); }
+.hub {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 28%; aspect-ratio: 1; border-radius: 50%; border: 0;
+  background: var(--accent); color: var(--on-accent); font-family: var(--f-display); font-weight: 700; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase;
+  cursor: pointer; box-shadow: 0 0 0 6px var(--surface), 0 4px 14px rgba(0, 0, 0, 0.28); transition: transform 0.15s;
+}
+.hub:hover:not(:disabled) { transform: translate(-50%, -50%) scale(1.05); }
+.hub:disabled { cursor: progress; }
+
+.result { border-top: 1px solid var(--line); padding-top: 16px; min-height: 172px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.state { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.pick { font-family: var(--f-display); font-weight: 500; font-size: clamp(19px, 3.4vw, 25px); line-height: 1.15; margin: 0; text-wrap: balance; overflow-wrap: anywhere; }
+.result[data-mode="idle"] .pick, .result[data-mode="spin"] .pick { color: var(--muted); }
+.result[data-mode="spin"] .chips { opacity: 0.6; }
+.hint { margin: 0; color: var(--muted); font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ticker { font-family: var(--f-mono); font-weight: 600; font-size: 14px; background: var(--accent); color: var(--on-accent); padding: 3px 9px; border-radius: 6px; }
+.chip { font-size: 13px; background: var(--chip); padding: 3px 9px; border-radius: 6px; }
+.links { display: flex; flex-wrap: wrap; gap: 8px; }
+.links a { font-size: 13px; color: var(--ink); text-decoration: none; border: 1px solid var(--line); padding: 5px 10px; border-radius: 8px; }
+.links a:hover { border-color: var(--ink); }
+
+.hist-wrap { border-top: 1px solid var(--line); padding-top: 12px; }
+.hist-title { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+.hist { margin: 0; padding: 0; list-style: none; font-family: var(--f-mono); font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; min-height: 70px; }
+.hist li { overflow-wrap: anywhere; }
+
+.foot a { color: inherit; }
+.foot { margin: 24px 0 0; font-size: 12px; color: var(--muted); max-width: 72ch; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) { .hub { transition: none; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="top">
+    <div>
+      <h1>Ruleta de Mercado</h1>
+      <p class="lede">Una acción del S&amp;P 500 y un token del top 50 por market cap, sorteados al azar para que los investigues.</p>
+    </div>
+    <button class="btn-all" id="spin-all" type="button">Girar las dos</button>
+  </div>
+
+  <div class="panels">
+    <section class="panel stock" aria-labelledby="stock-h">
+      <div class="panel-head">
+        <h2 id="stock-h">Acción</h2>
+        <p class="meta" id="stock-meta"></p>
+      </div>
+      <p class="controls">Cada sector ocupa tanto espacio como empresas tiene, así que todas las acciones tienen la misma probabilidad.</p>
+      <div class="wheel-wrap">
+        <canvas id="stock-canvas" aria-hidden="true"></canvas>
+        <span class="pointer" aria-hidden="true"></span>
+        <button class="hub" id="stock-spin" type="button" aria-label="Girar la rueda de acciones">Girar</button>
+      </div>
+      <div class="result" id="stock-result" data-mode="idle"></div>
+      <div class="hist-wrap">
+        <p class="hist-title">Anteriores</p>
+        <ul class="hist" id="stock-history"></ul>
+      </div>
+      <p class="sr-only" id="stock-status" aria-live="polite"></p>
+    </section>
+
+    <section class="panel coin" aria-labelledby="coin-h">
+      <div class="panel-head">
+        <h2 id="coin-h">Token cripto</h2>
+        <p class="meta" id="coin-meta"></p>
+      </div>
+      <p class="controls">
+        <label class="toggle"><input type="checkbox" id="coin-filter" checked><span>Sin stablecoins ni activos tokenizados (USDT, USDC, oro, fondos del Tesoro)</span></label>
+      </p>
+      <div class="wheel-wrap">
+        <canvas id="coin-canvas" aria-hidden="true"></canvas>
+        <span class="pointer" aria-hidden="true"></span>
+        <button class="hub" id="coin-spin" type="button" aria-label="Girar la rueda de tokens">Girar</button>
+      </div>
+      <div class="result" id="coin-result" data-mode="idle"></div>
+      <div class="hist-wrap">
+        <p class="hist-title">Anteriores</p>
+        <ul class="hist" id="coin-history"></ul>
+      </div>
+      <p class="sr-only" id="coin-status" aria-live="polite"></p>
+    </section>
+  </div>
+
+  <p class="foot">Listas cargadas el {{FECHA}}: constituyentes del S&amp;P 500 (<a href="https://github.com/datasets/s-and-p-500-companies" target="_blank" rel="noopener noreferrer">datasets/s-and-p-500-companies</a>) y top 50 por capitalización de <a href="https://www.coingecko.com/" target="_blank" rel="noopener noreferrer">CoinGecko</a>. Sirve para elegir qué investigar, no es una recomendación de inversión.</p>
+</div>
+
+<script>
+(function () {
+  var DATA = /*DATA*/null;
+  var SECTORS = DATA.sectors, STOCKS = DATA.stocks, COINS = DATA.coins;
+  var TAU = Math.PI * 2;
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var $ = function (s) { return document.querySelector(s); };
+
+  function h(tag, props) {
+    var e = document.createElement(tag);
+    for (var k in (props || {})) {
+      if (k === 'class') e.className = props[k];
+      else if (k === 'text') e.textContent = props[k];
+      else e.setAttribute(k, props[k]);
+    }
+    for (var i = 2; i < arguments.length; i++) { if (arguments[i] != null) e.append(arguments[i]); }
+    return e;
+  }
+
+  // Entero uniforme en [0, n) con rechazo para evitar sesgo de módulo.
+  function randInt(n) {
+    var lim = Math.floor(0x100000000 / n) * n, a = new Uint32Array(1);
+    do { crypto.getRandomValues(a); } while (a[0] >= lim);
+    return a[0] % n;
+  }
+
+  function news(q) { return 'https://www.google.com/search?tbm=nws&q=' + encodeURIComponent(q); }
+  function search(q) { return 'https://www.google.com/search?q=' + encodeURIComponent(q); }
+
+  var tok = {};
+  function readTokens() {
+    var cs = getComputedStyle(document.documentElement);
+    tok.rim = cs.getPropertyValue('--rim').trim() || '#10202A';
+    tok.surface = cs.getPropertyValue('--surface').trim() || '#FFFFFF';
+  }
+
+  function stockSlices() {
+    var out = [], i = 0, N = STOCKS.length;
+    SECTORS.forEach(function (s, si) {
+      var c = 0;
+      while (i + c < N && STOCKS[i + c][2] === si) c++;
+      out.push({ f0: i / N, f1: (i + c) / N, label: s.short + ' ' + c, color: 'hsl(' + ((160 + si * 33) % 360) + ' 46% 32%)' });
+      i += c;
+    });
+    return out;
+  }
+  function coinSlices(items) {
+    var N = items.length;
+    return items.map(function (c, i) {
+      return { f0: i / N, f1: (i + 1) / N, label: c[2], color: i % 2 ? 'hsl(34 60% 27%)' : 'hsl(30 70% 37%)' };
+    });
+  }
+
+  var stock = {
+    key: 'stock', ticks: true, mono: false, theta: randInt(360), spinning: false, history: [], lastLive: -1,
+    items: STOCKS, slices: stockSlices(),
+    noun: 'empresas',
+    describe: function (it) {
+      var d = it[0].replace('.', '-');
+      return {
+        name: it[1], ticker: it[0], chip: SECTORS[it[2]].name,
+        links: [
+          ['Yahoo Finance', 'https://finance.yahoo.com/quote/' + d],
+          ['Finviz', 'https://finviz.com/quote.ashx?t=' + d],
+          ['Informes 10-K (SEC)', 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=' + it[3] + '&type=10-K&owner=include&count=40'],
+          ['Noticias', news(it[1] + ' ' + it[0] + ' acciones')]
+        ]
+      };
+    }
+  };
+  var coin = {
+    key: 'coin', ticks: false, mono: true, theta: randInt(360), spinning: false, history: [], lastLive: -1,
+    items: [], slices: [],
+    noun: 'tokens',
+    describe: function (it) {
+      return {
+        name: it[3], ticker: it[2], chip: '#' + it[0] + ' por market cap',
+        links: [
+          ['CoinGecko', 'https://www.coingecko.com/en/coins/' + it[1]],
+          ['Tokenomics', search(it[3] + ' ' + it[2] + ' tokenomics')],
+          ['Whitepaper', search(it[3] + ' ' + it[2] + ' whitepaper')],
+          ['Noticias', news(it[3] + ' ' + it[2] + ' crypto')]
+        ]
+      };
+    }
+  };
+  var wheels = [stock, coin];
+  wheels.forEach(function (w) {
+    w.canvas = $('#' + w.key + '-canvas');
+    w.ctx = w.canvas.getContext('2d');
+    w.btn = $('#' + w.key + '-spin');
+    w.resultEl = $('#' + w.key + '-result');
+    w.histEl = $('#' + w.key + '-history');
+    w.statusEl = $('#' + w.key + '-status');
+  });
+
+  var filter = $('#coin-filter');
+  function setCoinPool() {
+    coin.items = COINS.filter(function (c) { return !filter.checked || !c[4]; });
+    coin.slices = coinSlices(coin.items);
+    $('#coin-meta').textContent = 'Top 50 por market cap · ' + coin.items.length + ' en juego';
+  }
+  $('#stock-meta').textContent = 'S&P 500 · ' + STOCKS.length + ' empresas';
+
+  function draw(w) {
+    var cv = w.canvas, size = cv.clientWidth;
+    if (!size) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    var px = Math.round(size * dpr);
+    if (cv.width !== px) { cv.width = px; cv.height = px; }
+    var ctx = w.ctx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    var c = size / 2, R = c - 10, hubR = size * 0.14, N = w.items.length;
+
+    ctx.beginPath(); ctx.arc(c, c, c - 2, 0, TAU); ctx.fillStyle = tok.rim; ctx.fill();
+
+    ctx.save();
+    ctx.translate(c, c);
+    ctx.rotate(w.theta * Math.PI / 180);
+
+    w.slices.forEach(function (s) {
+      var a0 = -Math.PI / 2 + s.f0 * TAU, a1 = -Math.PI / 2 + s.f1 * TAU;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R, a0, a1); ctx.closePath();
+      ctx.fillStyle = s.color; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = tok.surface; ctx.stroke();
+    });
+
+    var face = w.mono ? '"IBM Plex Mono", ui-monospace, Menlo, monospace' : '"IBM Plex Sans", system-ui, sans-serif';
+    var fs = w.mono ? Math.min(size * 0.034, TAU * R * 0.75 / N * 0.7) : size * 0.031;
+    var avail = R - 14 - (hubR + 10);
+    ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
+    w.slices.forEach(function (s) {
+      var mid = -Math.PI / 2 + (s.f0 + s.f1) / 2 * TAU, f = fs;
+      ctx.font = '600 ' + f + 'px ' + face;
+      var wd = ctx.measureText(s.label).width;
+      if (wd > avail) { f = f * avail / wd; ctx.font = '600 ' + f + 'px ' + face; }
+      ctx.save(); ctx.rotate(mid); ctx.fillText(s.label, R - 14, 0); ctx.restore();
+    });
+
+    if (w.ticks) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 0.6; ctx.beginPath();
+      for (var i = 0; i < N; i++) {
+        var a = -Math.PI / 2 + (i + 0.5) / N * TAU;
+        ctx.moveTo(Math.cos(a) * (R - 5), Math.sin(a) * (R - 5));
+        ctx.lineTo(Math.cos(a) * R, Math.sin(a) * R);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function underPointer(w) {
+    var N = w.items.length;
+    var phi = (((-w.theta) % 360) + 360) % 360;
+    return Math.min(N - 1, Math.floor(phi / 360 * N));
+  }
+
+  function renderResult(w, mode, item) {
+    var el = w.resultEl;
+    el.replaceChildren();
+    el.setAttribute('data-mode', mode);
+    if (mode === 'idle') {
+      el.append(
+        h('p', { class: 'state', text: 'Sin sortear' }),
+        h('p', { class: 'pick', text: 'Todavía no giraste' }),
+        h('p', { class: 'hint', text: 'Tocá Girar para elegir una entre ' + w.items.length + ' ' + w.noun + '.' })
+      );
+      return;
+    }
+    var d = w.describe(item);
+    el.append(
+      h('p', { class: 'state', text: mode === 'spin' ? 'Girando…' : 'Sorteada' }),
+      h('p', { class: 'pick', text: d.name }),
+      h('div', { class: 'chips' }, h('span', { class: 'ticker', text: d.ticker }), h('span', { class: 'chip', text: d.chip }))
+    );
+    if (mode === 'done') {
+      var box = h('div', { class: 'links' });
+      d.links.forEach(function (l) {
+        box.append(h('a', { href: l[1], target: '_blank', rel: 'noopener noreferrer', text: l[0] + ' ↗' }));
+      });
+      el.append(box);
+    }
+  }
+
+  function renderHistory(w) {
+    w.histEl.replaceChildren();
+    if (!w.history.length) { w.histEl.append(h('li', { text: 'Sin giros todavía.' })); return; }
+    w.history.forEach(function (t) { w.histEl.append(h('li', { text: t })); });
+  }
+
+  function syncBusy() {
+    var any = false;
+    wheels.forEach(function (w) { w.btn.disabled = w.spinning; if (w.spinning) any = true; });
+    $('#spin-all').disabled = any;
+    filter.disabled = coin.spinning;
+    wheels.forEach(function (w) { w.btn.textContent = w.spinning ? '…' : 'Girar'; });
+  }
+
+  function spin(w) {
+    if (w.spinning) return;
+    var N = w.items.length, idx = randInt(N);
+    var center = (idx + 0.5) / N * 360;
+    var want = (360 - center) % 360;
+    var cur = ((w.theta % 360) + 360) % 360;
+    var delta = (want - cur + 360) % 360;
+    var turns = reduce.matches ? 1 : 5 + randInt(3);
+    var start = w.theta, total = delta + turns * 360;
+    var dur = reduce.matches ? 700 : 4200 + randInt(1200);
+    w.spinning = true; w.lastLive = -1; syncBusy();
+    var t0 = performance.now();
+    function frame(now) {
+      var t = Math.min(1, (now - t0) / dur);
+      var e = 1 - Math.pow(1 - t, 4);
+      w.theta = start + total * e;
+      draw(w);
+      if (t < 1) {
+        var live = underPointer(w);
+        if (live !== w.lastLive) { w.lastLive = live; renderResult(w, 'spin', w.items[live]); }
+        requestAnimationFrame(frame);
+      } else {
+        w.theta = start + total;
+        draw(w);
+        w.spinning = false;
+        var it = w.items[idx], d = w.describe(it);
+        renderResult(w, 'done', it);
+        w.history.unshift(d.ticker + ' · ' + d.name);
+        w.history = w.history.slice(0, 5);
+        renderHistory(w);
+        w.statusEl.textContent = 'Sorteada: ' + d.name + ' (' + d.ticker + ')';
+        syncBusy();
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  stock.btn.addEventListener('click', function () { spin(stock); });
+  coin.btn.addEventListener('click', function () { spin(coin); });
+  $('#spin-all').addEventListener('click', function () { spin(stock); spin(coin); });
+  filter.addEventListener('change', function () {
+    if (coin.spinning) return;
+    setCoinPool(); renderResult(coin, 'idle'); draw(coin);
+  });
+
+  function redrawAll() { readTokens(); wheels.forEach(draw); }
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redrawAll);
+  new MutationObserver(redrawAll).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  if (window.ResizeObserver) {
+    var ro = new ResizeObserver(function () { wheels.forEach(draw); });
+    wheels.forEach(function (w) { ro.observe(w.canvas); });
+  } else { window.addEventListener('resize', redrawAll); }
+
+  setCoinPool();
+  readTokens();
+  wheels.forEach(function (w) { renderResult(w, 'idle'); renderHistory(w); draw(w); });
+  syncBusy();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(redrawAll);
+})();
+</script>
+</body>
+</html>
