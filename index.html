@@ -216,7 +216,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
   var SECTORS = DATA.sectors, STOCKS = DATA.stocks, COINS = DATA.coins;
   var TAU = Math.PI * 2;
   // ====== DURACIÓN DEL GIRO: cambiá solo este número (en segundos) ======
-  var SEGUNDOS_DE_GIRO = 10;
+  var SEGUNDOS_DE_GIRO = 15;
   // ======================================================================
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
   var $ = function (s) { return document.querySelector(s); };
@@ -579,6 +579,44 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     var now = audio.ctx.currentTime, k = w === coin ? 1.5 : 1;
     [523.25, 659.25, 783.99, 1046.5].forEach(function (f, i) { beep(f * k, now + i * 0.11, 0.55, 0.16, 'sine'); });
   }
+  // Festejo al terminar: lluvia de emojis desde la rueda (dólares para acciones, cripto para tokens)
+  var fiesta = null;
+  function celebrate(w) {
+    if (document.hidden) return;
+    if (!fiesta) {
+      fiesta = h('div', { 'aria-hidden': 'true' });
+      fiesta.style.cssText = 'position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:50';
+      document.body.append(fiesta);
+    }
+    var set = w === coin ? ['🪙', '₿', '🚀', '💎', '🪙', '⛓️'] : ['💵', '💰', '💸', '🤑', '💲', '💵'];
+    var r = w.canvas.getBoundingClientRect();
+    var ox = r.left + r.width / 2, oy = r.top + r.height / 2;
+    var ps = [];
+    for (var i = 0; i < 34; i++) {
+      var el = h('span', { text: set[randInt(set.length)] });
+      var size = 22 + randInt(16);
+      el.style.cssText = 'position:absolute;left:0;top:0;line-height:1;will-change:transform,opacity;font-size:' + size + 'px';
+      fiesta.append(el);
+      var ang = (-150 + randInt(1200) / 10) * Math.PI / 180, sp = 450 + randInt(650);
+      ps.push({ el: el, x: ox, y: oy, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, rot: randInt(360), vr: randInt(600) - 300, life: 2200 + randInt(1400) });
+    }
+    var t0 = performance.now(), prev = t0;
+    function paso(now) {
+      var dt = Math.min(0.05, (now - prev) / 1000); prev = now;
+      var age = now - t0, vivos = 0;
+      ps.forEach(function (p) {
+        if (age >= p.life) { if (p.el.parentNode) p.el.remove(); return; }
+        vivos++;
+        p.vy += 1500 * dt; p.vx *= 0.995; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+        p.el.style.transform = 'translate3d(' + p.x + 'px,' + p.y + 'px,0) rotate(' + p.rot + 'deg)';
+        var rest = p.life - age;
+        p.el.style.opacity = rest < 600 ? String(rest / 600) : '1';
+      });
+      if (vivos) requestAnimationFrame(paso);
+    }
+    requestAnimationFrame(paso);
+  }
+
   var soundBtn = $('#sound');
   function syncSound() {
     soundBtn.setAttribute('aria-pressed', audio.on ? 'true' : 'false');
@@ -619,6 +657,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
         draw(w);
         w.spinning = false;
         chime(w);
+        celebrate(w);
         var it = w.items[idx], d = w.describe(it);
         renderResult(w, 'done', it);
         renderData(w, d);
