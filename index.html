@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ruleta de Mercado</title>
 <meta name="description" content="Sorteá al azar una acción del S&amp;P 500 y un token del top 50 cripto para investigar.">
+<!-- Vista previa al pegar el link en X, WhatsApp, etc. Si cambiás la dirección del sitio, actualizá las dos URLs de og-image.png. -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Ruleta de Mercado">
+<meta property="og:description" content="Sorteá al azar una acción del S&amp;P 500 y un token del top 50 cripto para investigar.">
+<meta property="og:image" content="https://ruletamarket.netlify.app/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Ruleta de Mercado">
+<meta name="twitter:description" content="Sorteá al azar una acción del S&amp;P 500 y un token del top 50 cripto para investigar.">
+<meta name="twitter:image" content="https://ruletamarket.netlify.app/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
@@ -145,6 +154,19 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
 .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .widget-box { min-height: 420px; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; }
 .note { margin: 0; font-size: 12px; color: var(--muted); }
+.weeknote { margin: 10px 0 0; font-size: 13px; color: var(--muted); max-width: 60ch; }
+.btn-week { font-family: var(--f-display); font-weight: 600; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; background: transparent; color: var(--ink); border: 2px solid var(--ink); border-radius: 10px; padding: 12px 14px; cursor: pointer; }
+.btn-week:disabled { opacity: 0.55; cursor: progress; }
+.share { margin-top: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.share h2::before { background: var(--ink); }
+.share-text { width: 100%; box-sizing: border-box; min-height: 120px; resize: vertical; font: inherit; font-size: 15px; line-height: 1.5; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.share-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn-x { font-family: var(--f-display); font-weight: 700; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; background: var(--ink); color: var(--bg); text-decoration: none; border: 0; border-radius: 10px; padding: 13px 16px; cursor: pointer; }
+.btn-sec { font: inherit; font-size: 13px; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; }
+.btn-sec:hover { border-color: var(--ink); }
+.count { margin-left: auto; font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.count.over { color: #C0392B; font-weight: 600; }
+.card-prev { width: 100%; max-width: 560px; height: auto; aspect-ratio: 1200 / 675; border: 1px solid var(--line); border-radius: 10px; background: #0D1418; }
 .about { margin: 0; font-size: 15px; line-height: 1.55; max-width: 62ch; }
 
 @media (prefers-reduced-motion: reduce) { .hub { transition: none; } }
@@ -156,9 +178,11 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     <div>
       <h1>Ruleta de Mercado</h1>
       <p class="lede">Una acción del S&amp;P 500 y un token del top 50 por market cap, sorteados al azar para que los investigues.</p>
+      <p class="weeknote" id="week-note"></p>
     </div>
     <div class="acts">
       <button class="btn-sound" id="sound" type="button" aria-pressed="true">Sonido: sí</button>
+      <button class="btn-week" id="spin-week" type="button">Sorteo de la semana</button>
       <button class="btn-all" id="spin-all" type="button">Girar las dos</button>
     </div>
   </div>
@@ -207,6 +231,25 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     </section>
   </div>
 
+  <section class="share" id="share" aria-labelledby="share-h" hidden>
+    <h2 id="share-h">Compartir en X</h2>
+    <textarea class="share-text" id="share-text" aria-label="Texto del tuit, editable"></textarea>
+    <div class="share-row">
+      <a class="btn-x" id="share-x" href="#" target="_blank" rel="noopener noreferrer">Publicar en X ↗</a>
+      <button class="btn-sec" id="share-other" type="button">Otro texto</button>
+      <button class="btn-sec" id="share-copy" type="button">Copiar texto</button>
+      <button class="btn-sec" id="share-link" type="button">Copiar link del sorteo</button>
+      <span class="count" id="share-count" aria-live="off"></span>
+    </div>
+    <p class="state">Imagen para adjuntar al tuit</p>
+    <canvas class="card-prev" id="card-canvas" width="1200" height="675" role="img" aria-label="Vista previa de la imagen para compartir"></canvas>
+    <div class="share-row">
+      <button class="btn-sec" id="card-dl" type="button">Descargar imagen</button>
+      <button class="btn-sec" id="card-copy" type="button" hidden>Copiar imagen</button>
+      <button class="btn-sec" id="card-share" type="button" hidden>Compartir imagen…</button>
+    </div>
+  </section>
+
   <p class="foot">Listas cargadas el 19/10/2026: constituyentes del S&amp;P 500 (<a href="https://github.com/datasets/s-and-p-500-companies" target="_blank" rel="noopener noreferrer">datasets/s-and-p-500-companies</a>) y top 50 por capitalización de <a href="https://www.coingecko.com/" target="_blank" rel="noopener noreferrer">CoinGecko</a>. Sirve para elegir qué investigar, no es una recomendación de inversión.</p>
 </div>
 
@@ -218,6 +261,13 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
   // ====== DURACIÓN DEL GIRO: cambiá solo este número (en segundos) ======
   var SEGUNDOS_DE_GIRO = 15;
   // ======================================================================
+  // ====== MEDICIÓN DE VISITAS (opcional, gratis y sin cookies) ======
+  // GoatCounter: creá una cuenta en goatcounter.com y poné acá el "código" que elijas (ej. 'ruletamarket').
+  // Cuenta visitas y también acciones (giros, compartidos, imágenes). Dejalo vacío para no medir nada.
+  var GOATCOUNTER = '';
+  // Alternativa: Cloudflare Web Analytics (solo visitas). Pegá acá el token del sitio. Vacío = desactivado.
+  var CF_ANALYTICS_TOKEN = '';
+  // ==================================================================
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
   var $ = function (s) { return document.querySelector(s); };
 
@@ -241,6 +291,20 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
 
   function news(q) { return 'https://www.google.com/search?tbm=nws&q=' + encodeURIComponent(q); }
   function search(q) { return 'https://www.google.com/search?q=' + encodeURIComponent(q); }
+
+  (function medir() {
+    function script(attrs) {
+      var s = document.createElement('script'); s.async = true;
+      for (var k in attrs) s.setAttribute(k, attrs[k]);
+      document.head.append(s);
+    }
+    if (GOATCOUNTER) script({ 'data-goatcounter': 'https://' + GOATCOUNTER + '.goatcounter.com/count', src: 'https://gc.zgo.at/count.js' });
+    if (CF_ANALYTICS_TOKEN) script({ src: 'https://static.cloudflareinsights.com/beacon.min.js', 'data-cf-beacon': JSON.stringify({ token: CF_ANALYTICS_TOKEN }) });
+  })();
+  // Registra una acción (solo si GoatCounter está activado); nunca rompe la página.
+  function evento(nombre) {
+    try { if (GOATCOUNTER && window.goatcounter && window.goatcounter.count) window.goatcounter.count({ path: 'evento/' + nombre, title: nombre, event: true }); } catch (e) {}
+  }
 
   var tok = {};
   function readTokens() {
@@ -498,6 +562,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     var any = false;
     wheels.forEach(function (w) { w.btn.disabled = w.spinning; if (w.spinning) any = true; });
     $('#spin-all').disabled = any;
+    $('#spin-week').disabled = any;
     filter.disabled = coin.spinning;
     wheels.forEach(function (w) { w.btn.textContent = w.spinning ? '…' : 'Girar'; });
   }
@@ -630,9 +695,237 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
   });
   syncSound();
 
-  function spin(w) {
+  // Muestra el resultado de una rueda (al terminar el giro o al abrir un link compartido).
+  function finish(w, idx) {
+    var it = w.items[idx], d = w.describe(it);
+    w.curItem = it;
+    renderResult(w, 'done', it);
+    renderData(w, d);
+    w.history.unshift(d.ticker + ' · ' + d.name);
+    w.history = w.history.slice(0, 5);
+    renderHistory(w);
+    w.statusEl.textContent = 'Sorteada: ' + d.name + ' (' + d.ticker + ')';
+    updateShare();
+  }
+  // Deja la rueda quieta apuntando al ítem idx (sin girar).
+  function snap(w, idx) {
+    w.theta = (360 - (idx + 0.5) / w.items.length * 360) % 360;
+    draw(w);
+    finish(w, idx);
+  }
+
+  // ===== Sorteo semanal: misma acción y mismo token para todos, de lunes a domingo (hora de Argentina) =====
+  var SEMANA_MS = 7 * 86400000, ANCLA_LUNES = Date.UTC(2024, 0, 1);
+  function semanaId() { return Math.floor((Date.now() - 3 * 3600000 - ANCLA_LUNES) / SEMANA_MS); }
+  function hashStr(str) {
+    var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (var i = 0; i < str.length; i++) {
+      var ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  }
+  function fechaCorta(ms) {
+    var d = new Date(ms);
+    return ('0' + d.getUTCDate()).slice(-2) + '/' + ('0' + (d.getUTCMonth() + 1)).slice(-2);
+  }
+  function rangoSemana() {
+    var lunes = ANCLA_LUNES + semanaId() * SEMANA_MS;
+    return fechaCorta(lunes) + ' al ' + fechaCorta(lunes + 6 * 86400000);
+  }
+  // Gana el ítem con el hash más bajo de la semana. Así el resultado no cambia aunque la lista
+  // se actualice a mitad de semana (solo cambiaría si sale del índice justo el ganador).
+  function indiceSemanal(w, pool) {
+    var mejor = 0, hMejor = Infinity;
+    pool.forEach(function (it, i) {
+      var v = hashStr('ruleta-' + semanaId() + '-' + (w === coin ? it[1] : it[0]));
+      if (v < hMejor) { hMejor = v; mejor = i; }
+    });
+    return mejor;
+  }
+  $('#week-note').textContent = 'Sorteo de la semana (' + rangoSemana() + '): la misma acción y el mismo token para todos. Cambia cada lunes.';
+  $('#spin-week').addEventListener('click', function () {
+    if (stock.spinning || coin.spinning) return;
+    if (!filter.checked) { filter.checked = true; setCoinPool(); clearData(coin); coin.curItem = null; renderResult(coin, 'idle'); draw(coin); }
+    spin(stock, indiceSemanal(stock, STOCKS));
+    spin(coin, indiceSemanal(coin, coin.items));
+  });
+
+  // ===== Compartir en X: texto armado (con humor negro), link propio del sorteo =====
+  var PLANTILLAS = [
+    'Mi comité de inversiones es una ruleta y no acepta reclamos. Esta semana me tocó: {X}. Si la tesis muere, al menos tuvo funeral con gráficos. {L}',
+    'El azar eligió y no se hace responsable. Me tocó: {X}. Los analizo esta semana, antes de que mi cartera pase al cementerio. {L}',
+    'Dicen que el mercado siempre tiene razón. La ruleta me dio {X}; veamos quién entierra a quién. {L}',
+    'Diversificación a la antigua: cerrar los ojos y girar. Salió: {X}. No es recomendación, ni yo confío en mí. {L}',
+    'Giré la Ruleta de Mercado y me tocó {X}. Esta semana investigo; mi cartera ya conoce el sentimiento del velorio. {L}',
+    'Estudiar fundamentales es de cobardes: decide la ruleta. Esta semana: {X}. Que descanse en paz mi capital (o no). {L}',
+    'La ruleta decidió mi semana: {X}. El análisis serio viene después, la culpa es del azar desde ahora. {L}'
+  ];
+  var share = { v: randInt(PLANTILLAS.length), edited: false };
+  var shareEl = $('#share'), shareTxt = $('#share-text'), shareX = $('#share-x'), shareCnt = $('#share-count');
+
+  function enlaceSorteo() {
+    var base = location.origin && location.origin !== 'null' ? location.origin + location.pathname : location.pathname;
+    var p = [];
+    if (stock.curItem) p.push('a=' + encodeURIComponent(stock.curItem[0]));
+    if (coin.curItem) p.push('t=' + encodeURIComponent(coin.curItem[2]));
+    return base + (p.length ? '?' + p.join('&') : '');
+  }
+  function largoTuit(t) { return t.replace(/https?:\/\/\S+/g, '012345678901234567890123').length; }
+  function armarTuit(soloTickers) {
+    var partes = [];
+    if (stock.curItem) partes.push((soloTickers ? '' : stock.curItem[1] + ' (') + '$' + stock.curItem[0] + (soloTickers ? '' : ')'));
+    if (coin.curItem) partes.push((soloTickers ? '' : coin.curItem[3] + ' (') + '$' + coin.curItem[2] + (soloTickers ? '' : ')'));
+    var X = partes.join(' y '), L = enlaceSorteo();
+    for (var k = 0; k < PLANTILLAS.length; k++) {
+      var t = PLANTILLAS[(share.v + k) % PLANTILLAS.length].replace('{X}', X).replace('{L}', L);
+      if (largoTuit(t) <= 280) { share.v = (share.v + k) % PLANTILLAS.length; return t; }
+    }
+    return soloTickers ? ('Me tocó: ' + X + ' ' + L) : armarTuit(true);
+  }
+  function pintarCuenta() {
+    var n = largoTuit(shareTxt.value);
+    shareCnt.textContent = n + ' / 280';
+    shareCnt.className = n > 280 ? 'count over' : 'count';
+    shareX.href = 'https://x.com/intent/post?text=' + encodeURIComponent(shareTxt.value);
+  }
+  // ===== Imagen para compartir (1200x675, formato de tarjeta grande de X) =====
+  var ACENTO = { stock: ['#3DC79A', '#062218'], coin: ['#F2A648', '#2A1700'] };
+  function lineas(c, texto, maxW) {
+    var out = [], linea = '';
+    texto.split(' ').forEach(function (p) {
+      var prueba = linea ? linea + ' ' + p : p;
+      if (c.measureText(prueba).width > maxW && linea) { out.push(linea); linea = p; } else linea = prueba;
+    });
+    if (linea) out.push(linea);
+    return out;
+  }
+  function rect(c, x, y, w, hh, r) {
+    c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + hh, r); c.arcTo(x + w, y + hh, x, y + hh, r);
+    c.arcTo(x, y + hh, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+  }
+  function panelTarjeta(c, w, x, y, W, H, etiqueta) {
+    var ac = ACENTO[w.key];
+    c.save();
+    rect(c, x, y, W, H, 22); c.fillStyle = '#141E24'; c.fill();
+    c.save(); rect(c, x, y, W, H, 22); c.clip();
+    // rueda decorativa asomando por la esquina inferior derecha
+    var cx = x + W - 30, cy = y + H - 20, R = 250;
+    c.translate(cx, cy); c.rotate(w.theta * Math.PI / 180); c.globalAlpha = 0.5;
+    w.slices.forEach(function (sl) {
+      c.beginPath(); c.moveTo(0, 0); c.arc(0, 0, R, -Math.PI / 2 + sl.f0 * TAU, -Math.PI / 2 + sl.f1 * TAU); c.closePath();
+      c.fillStyle = sl.color; c.fill(); c.lineWidth = 1.5; c.strokeStyle = '#141E24'; c.stroke();
+    });
+    c.restore();
+    c.restore();
+    rect(c, x, y, W, H, 22); c.lineWidth = 2; c.strokeStyle = '#263640'; c.stroke();
+
+    var px = x + 36;
+    c.fillStyle = ac[0]; c.beginPath(); c.arc(px + 7, y + 48, 7, 0, TAU); c.fill();
+    c.fillStyle = '#E7EEF1'; c.font = '500 20px Unbounded, "Arial Black", system-ui, sans-serif'; c.textBaseline = 'middle';
+    c.fillText(etiqueta, px + 24, y + 48);
+    if (!w.curItem) {
+      c.fillStyle = '#95A5AF'; c.font = '500 34px Unbounded, system-ui, sans-serif'; c.fillText('Sin sortear', px, y + 130);
+      return;
+    }
+    var d = w.describe(w.curItem), maxW = W - 72, fs = 50, ls;
+    c.textBaseline = 'alphabetic';
+    for (; fs >= 28; fs -= 2) { c.font = '700 ' + fs + 'px Unbounded, "Arial Black", system-ui, sans-serif'; ls = lineas(c, d.name, maxW); if (ls.length <= 3) break; }
+    c.fillStyle = '#FFFFFF';
+    var ty = y + 118;
+    ls.slice(0, 3).forEach(function (l, i) { c.fillText(l, px, ty + i * fs * 1.2); });
+    var by = ty + Math.min(ls.length, 3) * fs * 1.2 + 14;
+    c.font = '600 32px "IBM Plex Mono", ui-monospace, Menlo, monospace';
+    var tw = c.measureText(d.ticker).width + 30;
+    rect(c, px, by, tw, 52, 10); c.fillStyle = ac[0]; c.fill();
+    c.fillStyle = ac[1]; c.textBaseline = 'middle'; c.fillText(d.ticker, px + 15, by + 27);
+    c.fillStyle = '#C5D1D7'; c.font = '500 24px "IBM Plex Sans", system-ui, sans-serif';
+    c.fillText(d.chip, px + tw + 16, by + 27);
+  }
+  function pintarTarjeta() {
+    var cv = $('#card-canvas'), c = cv.getContext('2d'), W = 1200, H = 675;
+    c.clearRect(0, 0, W, H);
+    c.fillStyle = '#0D1418'; c.fillRect(0, 0, W, H);
+    c.textBaseline = 'middle'; c.fillStyle = '#FFFFFF';
+    c.font = '700 30px Unbounded, "Arial Black", system-ui, sans-serif'; c.fillText('Ruleta de Mercado', 40, 56);
+    c.font = '500 16px "IBM Plex Mono", ui-monospace, monospace'; c.fillStyle = '#95A5AF'; c.textAlign = 'right';
+    c.fillText('S&P 500  ·  TOP 50 CRIPTO', W - 40, 56); c.textAlign = 'left';
+    panelTarjeta(c, stock, 40, 100, 550, 460, 'ACCIÓN');
+    panelTarjeta(c, coin, 610, 100, 550, 460, 'TOKEN CRIPTO');
+    c.textBaseline = 'middle'; c.fillStyle = '#95A5AF'; c.font = '500 20px "IBM Plex Mono", ui-monospace, monospace';
+    var sitio = (location.host || 'ruleta de mercado') + (location.host ? location.pathname.replace(/index\.html$/, '').replace(/\/$/, '') : '');
+    c.fillText(sitio, 40, 618);
+    c.textAlign = 'right'; c.font = '400 18px "IBM Plex Sans", system-ui, sans-serif';
+    c.fillText('Para investigar, no es una recomendación de inversión.', W - 40, 618); c.textAlign = 'left';
+  }
+  function nombreImagen() {
+    return 'ruleta-' + [stock.curItem && stock.curItem[0], coin.curItem && coin.curItem[2]].filter(Boolean).join('-').replace(/[^A-Za-z0-9._-]/g, '') + '.png';
+  }
+  function conBlob(fn) { pintarTarjeta(); $('#card-canvas').toBlob(function (b) { if (b) fn(b); }, 'image/png'); }
+  $('#card-dl').addEventListener('click', function () {
+    conBlob(function (b) {
+      var a = h('a', { href: URL.createObjectURL(b), download: nombreImagen() });
+      document.body.append(a); a.click(); a.remove(); evento('imagen-descargada');
+    });
+  });
+  if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+    var bc = $('#card-copy'); bc.hidden = false;
+    bc.addEventListener('click', function () {
+      conBlob(function (b) {
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]).then(function () {
+          bc.textContent = '¡Copiada!'; evento('imagen-copiada'); setTimeout(function () { bc.textContent = 'Copiar imagen'; }, 1600);
+        }, function () { bc.textContent = 'No se pudo copiar'; setTimeout(function () { bc.textContent = 'Copiar imagen'; }, 1800); });
+      });
+    });
+  }
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [new File([''], 'a.png', { type: 'image/png' })] })) {
+      var bs = $('#card-share'); bs.hidden = false;
+      bs.addEventListener('click', function () {
+        conBlob(function (b) {
+          var f = new File([b], nombreImagen(), { type: 'image/png' });
+          navigator.share({ files: [f], text: shareTxt.value }).then(function () { evento('imagen-compartida'); }, function () {});
+        });
+      });
+    }
+  } catch (e) {}
+
+  function updateShare() {
+    var hay = stock.curItem || coin.curItem;
+    shareEl.hidden = !hay;
+    try { history.replaceState(null, '', enlaceSorteo().replace(/^[^?]*/, location.pathname)); } catch (e) {}
+    if (!hay) return;
+    share.edited = false;
+    shareTxt.value = armarTuit(false);
+    pintarCuenta();
+    pintarTarjeta();
+  }
+  shareTxt.addEventListener('input', function () { share.edited = true; pintarCuenta(); });
+  $('#share-other').addEventListener('click', function () {
+    share.v = (share.v + 1) % PLANTILLAS.length;
+    shareTxt.value = armarTuit(false); pintarCuenta();
+  });
+  function copiar(texto, btn, etiqueta) {
+    function listo() { btn.textContent = '¡Copiado!'; setTimeout(function () { btn.textContent = etiqueta; }, 1600); }
+    function plan_b() {
+      var ta = h('textarea'); ta.value = texto; ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.append(ta); ta.select();
+      try { document.execCommand('copy'); listo(); } catch (e) {}
+      ta.remove();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(texto).then(listo, plan_b);
+    else plan_b();
+  }
+  $('#share-copy').addEventListener('click', function () { evento('copiar-texto'); copiar(shareTxt.value, this, 'Copiar texto'); });
+  shareX.addEventListener('click', function () { evento('publicar-x'); });
+  $('#share-link').addEventListener('click', function () { evento('copiar-link'); copiar(enlaceSorteo(), this, 'Copiar link del sorteo'); });
+
+  function spin(w, forced) {
     if (w.spinning) return;
-    var N = w.items.length, idx = randInt(N);
+    evento(forced == null ? 'giro-' + w.key : 'semanal-' + w.key);
+    var N = w.items.length, idx = forced == null ? randInt(N) : forced;
     var center = (idx + 0.5) / N * 360;
     var want = (360 - center) % 360;
     var cur = ((w.theta % 360) + 360) % 360;
@@ -641,7 +934,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     var start = w.theta, total = delta + turns * 360;
     var dur = SEGUNDOS_DE_GIRO * 1000;
     audioInit();
-    w.spinning = true; w.lastLive = -1; clearData(w); syncBusy();
+    w.spinning = true; w.lastLive = -1; clearData(w); w.curItem = null; updateShare(); syncBusy();
     var t0 = performance.now();
     function frame(now) {
       var t = Math.min(1, (now - t0) / dur);
@@ -658,13 +951,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
         w.spinning = false;
         chime(w);
         celebrate(w);
-        var it = w.items[idx], d = w.describe(it);
-        renderResult(w, 'done', it);
-        renderData(w, d);
-        w.history.unshift(d.ticker + ' · ' + d.name);
-        w.history = w.history.slice(0, 5);
-        renderHistory(w);
-        w.statusEl.textContent = 'Sorteada: ' + d.name + ' (' + d.ticker + ')';
+        finish(w, idx);
         syncBusy();
       }
     }
@@ -676,11 +963,12 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
   $('#spin-all').addEventListener('click', function () { spin(stock); spin(coin); });
   filter.addEventListener('change', function () {
     if (coin.spinning) return;
-    setCoinPool(); clearData(coin); renderResult(coin, 'idle'); draw(coin);
+    setCoinPool(); clearData(coin); coin.curItem = null; renderResult(coin, 'idle'); draw(coin); updateShare();
   });
 
   function redrawAll() {
     readTokens();
+    if (!shareEl.hidden) pintarTarjeta();
     wheels.forEach(function (w) {
       draw(w);
       if (w.cur && !w.spinning) {
@@ -696,10 +984,32 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     wheels.forEach(function (w) { ro.observe(w.canvas); });
   } else { window.addEventListener('resize', redrawAll); }
 
+  if (GOATCOUNTER || CF_ANALYTICS_TOKEN) {
+    var pie = document.querySelector('.foot');
+    if (pie) pie.append(' Se miden visitas y acciones de forma anónima, sin cookies.');
+  }
   setCoinPool();
   readTokens();
   wheels.forEach(function (w) { clearData(w); renderResult(w, 'idle'); renderHistory(w); draw(w); });
   syncBusy();
+  // Si la dirección trae ?a=TICKER y/o ?t=SIMBOLO, se muestra ese sorteo sin girar.
+  (function () {
+    var qs, qa, qt;
+    try { qs = new URLSearchParams(location.search); qa = qs.get('a'); qt = qs.get('t'); } catch (e) { return; }
+    if (qa || qt) evento('link-abierto');
+    if (qa) {
+      var ia = STOCKS.findIndex(function (s) { return s[0].toUpperCase() === qa.toUpperCase(); });
+      if (ia >= 0) snap(stock, ia);
+    }
+    if (qt) {
+      var ic = COINS.findIndex(function (c) { return c[2].toUpperCase() === qt.toUpperCase(); });
+      if (ic >= 0) {
+        if (COINS[ic][4] && filter.checked) { filter.checked = false; setCoinPool(); }
+        var jc = coin.items.findIndex(function (c) { return c[1] === COINS[ic][1]; });
+        if (jc >= 0) snap(coin, jc);
+      }
+    }
+  })();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(redrawAll);
 })();
 </script>
