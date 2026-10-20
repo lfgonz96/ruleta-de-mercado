@@ -543,14 +543,14 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     var want = (360 - center) % 360;
     var cur = ((w.theta % 360) + 360) % 360;
     var delta = (want - cur + 360) % 360;
-    var turns = reduce.matches ? 1 : 5 + randInt(3);
+    var turns = reduce.matches ? 1 : 8 + randInt(4);
     var start = w.theta, total = delta + turns * 360;
-    var dur = reduce.matches ? 700 : 4200 + randInt(1200);
+    var dur = reduce.matches ? 700 : 9000 + randInt(2500);
     w.spinning = true; w.lastLive = -1; clearData(w); syncBusy();
     var t0 = performance.now();
     function frame(now) {
       var t = Math.min(1, (now - t0) / dur);
-      var e = 1 - Math.pow(1 - t, 4);
+      var e = 1 - Math.pow(1 - t, 3.5);
       w.theta = start + total * e;
       draw(w);
       if (t < 1) {
