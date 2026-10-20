@@ -58,6 +58,7 @@
 }
 
 html { color-scheme: light; }
+[hidden] { display: none !important; }
 body {
   margin: 0;
   background: var(--bg);
@@ -130,6 +131,19 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
 .foot { margin: 24px 0 0; font-size: 12px; color: var(--muted); max-width: 72ch; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
+.data { border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 16px; margin: 0; }
+.fact { min-width: 0; }
+.fact dt { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.fact dd { margin: 2px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.info-box { min-width: 0; overflow: hidden; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab { font: inherit; font-size: 13px; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.tab:hover { border-color: var(--ink); }
+.tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.widget-box { min-height: 420px; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; }
+.note { margin: 0; font-size: 12px; color: var(--muted); }
+
 @media (prefers-reduced-motion: reduce) { .hub { transition: none; } }
 </style>
 </head>
@@ -156,6 +170,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
         <button class="hub" id="stock-spin" type="button" aria-label="Girar la rueda de acciones">Girar</button>
       </div>
       <div class="result" id="stock-result" data-mode="idle"></div>
+      <div class="data" id="stock-data" hidden></div>
       <div class="hist-wrap">
         <p class="hist-title">Anteriores</p>
         <ul class="hist" id="stock-history"></ul>
@@ -177,6 +192,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
         <button class="hub" id="coin-spin" type="button" aria-label="Girar la rueda de tokens">Girar</button>
       </div>
       <div class="result" id="coin-result" data-mode="idle"></div>
+      <div class="data" id="coin-data" hidden></div>
       <div class="hist-wrap">
         <p class="hist-title">Anteriores</p>
         <ul class="hist" id="coin-history"></ul>
@@ -241,6 +257,93 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     });
   }
 
+  var FECHA = '{{FECHA}}';
+  var nf = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 });
+  var nf1 = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 });
+  var HEIGHT = 460;
+
+  function theme() {
+    var t = document.documentElement.getAttribute('data-theme');
+    if (t === 'dark' || t === 'light') return t;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+
+  // Widget gratuito de TradingView: se arma un <script> con la configuración como JSON.
+  function tvWidget(box, name, cfg) {
+    box.replaceChildren();
+    var wrap = h('div', { class: 'tradingview-widget-container' });
+    var inner = h('div', { class: 'tradingview-widget-container__widget' });
+    wrap.append(inner);
+    if (cfg.autosize) { wrap.style.height = HEIGHT + 'px'; inner.style.height = '100%'; }
+    var s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://s3.tradingview.com/external-embedding/embed-widget-' + name + '.js';
+    var base = { width: '100%', locale: 'es', colorTheme: theme(), isTransparent: true };
+    s.text = JSON.stringify(Object.assign(base, cfg));
+    wrap.append(s);
+    box.append(wrap);
+  }
+
+  // Widget gratuito de CoinGecko: usa el id exacto del token, así que cubre a todos.
+  var geckoLoaded = false;
+  function geckoChart(box, id) {
+    if (!geckoLoaded) {
+      geckoLoaded = true;
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://widgets.coingecko.com/gecko-coin-price-chart-widget.js';
+      document.head.append(s);
+    }
+    box.replaceChildren();
+    var el = document.createElement('gecko-coin-price-chart-widget');
+    el.setAttribute('coin-id', id);
+    el.setAttribute('initial-currency', 'usd');
+    el.setAttribute('locale', 'es');
+    el.setAttribute('outlined', 'true');
+    el.setAttribute('height', String(HEIGHT));
+    el.setAttribute('width', '100%');
+    el.setAttribute('dark-mode', theme() === 'dark' ? 'true' : 'false');
+    box.append(el);
+  }
+
+  function chartTab(tv) {
+    return { label: 'Gráfico', mount: function (box) {
+      tvWidget(box, 'advanced-chart', { symbol: tv, autosize: true, interval: 'D', timezone: 'America/Argentina/Buenos_Aires', theme: theme(), style: '1', allow_symbol_change: false, hide_side_toolbar: true, withdateranges: true, calendar: false });
+    } };
+  }
+  function tvTab(label, name, tv, extra) {
+    return { label: label, mount: function (box) { tvWidget(box, name, Object.assign({ symbol: tv, height: HEIGHT }, extra)); } };
+  }
+  function stockTabs(tv) {
+    return [
+      chartTab(tv),
+      tvTab('Técnico', 'technical-analysis', tv, { interval: '1D', showIntervalTabs: true, displayMode: 'single' }),
+      tvTab('Perfil', 'symbol-profile', tv, {}),
+      tvTab('Fundamentales', 'financials', tv, { displayMode: 'regular', largeChartUrl: '' }),
+      tvTab('Noticias', 'timeline', tv, { feedMode: 'symbol', displayMode: 'regular' })
+    ];
+  }
+  function coinTabs(id, tv) {
+    var tabs = [{ label: 'Precio', mount: function (box) { geckoChart(box, id); } }];
+    if (tv) {
+      tabs.push(chartTab(tv));
+      tabs.push(tvTab('Técnico', 'technical-analysis', tv, { interval: '1D', showIntervalTabs: true, displayMode: 'single' }));
+      tabs.push(tvTab('Noticias', 'timeline', tv, { feedMode: 'symbol', displayMode: 'regular' }));
+    }
+    return tabs;
+  }
+  function stockFacts(it) {
+    return [['Sub-industria (GICS)', it[5]], ['Sede', it[6]], ['Fundada', it[7]], ['En el S&P 500 desde', it[8]]]
+      .filter(function (f) { return f[1] !== '' && f[1] != null; });
+  }
+  function coinFacts(it) {
+    var f = [['Ranking por market cap', '#' + it[0] + ' al ' + FECHA]];
+    if (it[6]) f.push(['Suministro circulante', nf.format(it[6]) + ' ' + it[2]]);
+    f.push(['Suministro máximo', it[7] ? nf.format(it[7]) + ' ' + it[2] : 'Sin tope definido']);
+    if (it[6] && it[7]) f.push(['Ya emitido', nf1.format(it[6] / it[7] * 100) + '%']);
+    return f;
+  }
+
   var stock = {
     key: 'stock', ticks: true, mono: false, theta: randInt(360), spinning: false, history: [], lastLive: -1,
     items: STOCKS, slices: stockSlices(),
@@ -254,7 +357,8 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
           ['Finviz', 'https://finviz.com/quote.ashx?t=' + d],
           ['Informes 10-K (SEC)', 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=' + it[3] + '&type=10-K&owner=include&count=40'],
           ['Noticias', news(it[1] + ' ' + it[0] + ' acciones')]
-        ]
+        ],
+        tv: it[4], facts: stockFacts(it), tabs: stockTabs(it[4])
       };
     }
   };
@@ -270,7 +374,8 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
           ['Tokenomics', search(it[3] + ' ' + it[2] + ' tokenomics')],
           ['Whitepaper', search(it[3] + ' ' + it[2] + ' whitepaper')],
           ['Noticias', news(it[3] + ' ' + it[2] + ' crypto')]
-        ]
+        ],
+        tv: it[5], facts: coinFacts(it), tabs: coinTabs(it[1], it[5])
       };
     }
   };
@@ -282,6 +387,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     w.resultEl = $('#' + w.key + '-result');
     w.histEl = $('#' + w.key + '-history');
     w.statusEl = $('#' + w.key + '-status');
+    w.dataEl = $('#' + w.key + '-data');
   });
 
   var filter = $('#coin-filter');
@@ -387,6 +493,47 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     wheels.forEach(function (w) { w.btn.textContent = w.spinning ? '…' : 'Girar'; });
   }
 
+  function clearData(w) {
+    w.dataEl.hidden = true;
+    w.dataEl.replaceChildren();
+    w.cur = null; w.tabIdx = 0; w.infoBox = null; w.box = null; w.tabBtns = [];
+  }
+  function selectTab(w, i) {
+    w.tabIdx = i;
+    w.tabBtns.forEach(function (b, j) { b.setAttribute('aria-selected', j === i ? 'true' : 'false'); });
+    w.cur.tabs[i].mount(w.box);
+  }
+  function renderData(w, d) {
+    var el = w.dataEl;
+    el.replaceChildren();
+    w.cur = d; w.tabIdx = 0;
+    el.append(h('p', { class: 'state', text: 'Datos para el análisis' }));
+    if (d.facts.length) {
+      var dl = h('dl', { class: 'facts' });
+      d.facts.forEach(function (f) { dl.append(h('div', { class: 'fact' }, h('dt', { text: f[0] }), h('dd', { text: String(f[1]) }))); });
+      el.append(dl);
+    }
+    w.infoBox = null;
+    if (d.tv) {
+      w.infoBox = h('div', { class: 'info-box' });
+      el.append(w.infoBox);
+      tvWidget(w.infoBox, 'symbol-info', { symbol: d.tv });
+    }
+    var tabs = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Widgets de ' + d.ticker });
+    w.tabBtns = d.tabs.map(function (t, i) {
+      var b = h('button', { type: 'button', class: 'tab', role: 'tab', 'aria-selected': 'false', text: t.label });
+      b.addEventListener('click', function () { selectTab(w, i); });
+      tabs.append(b);
+      return b;
+    });
+    el.append(tabs);
+    w.box = h('div', { class: 'widget-box', role: 'tabpanel' });
+    el.append(w.box);
+    el.append(h('p', { class: 'note', text: 'Los widgets son de TradingView y CoinGecko y pueden mostrar datos con demora. Los datos de arriba se cargaron el ' + FECHA + '.' }));
+    el.hidden = false;
+    selectTab(w, 0);
+  }
+
   function spin(w) {
     if (w.spinning) return;
     var N = w.items.length, idx = randInt(N);
@@ -397,7 +544,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     var turns = reduce.matches ? 1 : 5 + randInt(3);
     var start = w.theta, total = delta + turns * 360;
     var dur = reduce.matches ? 700 : 4200 + randInt(1200);
-    w.spinning = true; w.lastLive = -1; syncBusy();
+    w.spinning = true; w.lastLive = -1; clearData(w); syncBusy();
     var t0 = performance.now();
     function frame(now) {
       var t = Math.min(1, (now - t0) / dur);
@@ -414,6 +561,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
         w.spinning = false;
         var it = w.items[idx], d = w.describe(it);
         renderResult(w, 'done', it);
+        renderData(w, d);
         w.history.unshift(d.ticker + ' · ' + d.name);
         w.history = w.history.slice(0, 5);
         renderHistory(w);
@@ -429,10 +577,19 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
   $('#spin-all').addEventListener('click', function () { spin(stock); spin(coin); });
   filter.addEventListener('change', function () {
     if (coin.spinning) return;
-    setCoinPool(); renderResult(coin, 'idle'); draw(coin);
+    setCoinPool(); clearData(coin); renderResult(coin, 'idle'); draw(coin);
   });
 
-  function redrawAll() { readTokens(); wheels.forEach(draw); }
+  function redrawAll() {
+    readTokens();
+    wheels.forEach(function (w) {
+      draw(w);
+      if (w.cur && !w.spinning) {
+        if (w.infoBox) tvWidget(w.infoBox, 'symbol-info', { symbol: w.cur.tv });
+        selectTab(w, w.tabIdx);
+      }
+    });
+  }
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redrawAll);
   new MutationObserver(redrawAll).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   if (window.ResizeObserver) {
@@ -442,7 +599,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
 
   setCoinPool();
   readTokens();
-  wheels.forEach(function (w) { renderResult(w, 'idle'); renderHistory(w); draw(w); });
+  wheels.forEach(function (w) { clearData(w); renderResult(w, 'idle'); renderHistory(w); draw(w); });
   syncBusy();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(redrawAll);
 })();
