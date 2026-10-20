@@ -81,6 +81,8 @@ h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(26px, 5vw
   font-family: var(--f-display); font-weight: 700; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;
   background: var(--ink); color: var(--bg); border: 0; border-radius: 10px; padding: 14px 22px; cursor: pointer;
 }
+.acts { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn-sound { font-family: var(--f-display); font-weight: 600; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 13px 14px; cursor: pointer; }
 .btn-all:disabled { opacity: 0.55; cursor: progress; }
 button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 
@@ -155,7 +157,10 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
       <h1>Ruleta de Mercado</h1>
       <p class="lede">Una acción del S&amp;P 500 y un token del top 50 por market cap, sorteados al azar para que los investigues.</p>
     </div>
-    <button class="btn-all" id="spin-all" type="button">Girar las dos</button>
+    <div class="acts">
+      <button class="btn-sound" id="sound" type="button" aria-pressed="true">Sonido: sí</button>
+      <button class="btn-all" id="spin-all" type="button">Girar las dos</button>
+    </div>
   </div>
 
   <div class="panels">
@@ -536,6 +541,54 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     selectTab(w, 0);
   }
 
+
+  var audio = { ctx: null, on: true };
+  try { if (localStorage.getItem('ruleta-sonido') === '0') audio.on = false; } catch (e) {}
+  function audioInit() {
+    if (!audio.on) return;
+    try {
+      if (!audio.ctx) { var AC = window.AudioContext || window.webkitAudioContext; if (AC) audio.ctx = new AC(); }
+      if (audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume();
+    } catch (e) {}
+  }
+  function beep(freq, when, dur, vol, type) {
+    var c = audio.ctx;
+    if (!c) return;
+    try {
+      var o = c.createOscillator(), g = c.createGain();
+      o.type = type; o.frequency.setValueAtTime(freq, when);
+      g.gain.setValueAtTime(0.0001, when);
+      g.gain.exponentialRampToValueAtTime(vol, when + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+      o.connect(g); g.connect(c.destination);
+      o.start(when); o.stop(when + dur + 0.02);
+    } catch (e) {}
+  }
+  function tick(w) {
+    if (!audio.on || !audio.ctx) return;
+    var now = audio.ctx.currentTime;
+    if (now - (w.lastTick || 0) < 0.03) return;
+    w.lastTick = now;
+    beep(w === coin ? 1000 : 700, now, 0.05, 0.1, 'triangle');
+  }
+  function chime(w) {
+    if (!audio.on || !audio.ctx) return;
+    var now = audio.ctx.currentTime, k = w === coin ? 1.5 : 1;
+    [523.25, 659.25, 783.99, 1046.5].forEach(function (f, i) { beep(f * k, now + i * 0.11, 0.55, 0.16, 'sine'); });
+  }
+  var soundBtn = $('#sound');
+  function syncSound() {
+    soundBtn.setAttribute('aria-pressed', audio.on ? 'true' : 'false');
+    soundBtn.textContent = audio.on ? 'Sonido: sí' : 'Sonido: no';
+  }
+  soundBtn.addEventListener('click', function () {
+    audio.on = !audio.on;
+    try { localStorage.setItem('ruleta-sonido', audio.on ? '1' : '0'); } catch (e) {}
+    syncSound();
+    if (audio.on) { audioInit(); tick(stock); }
+  });
+  syncSound();
+
   function spin(w) {
     if (w.spinning) return;
     var N = w.items.length, idx = randInt(N);
@@ -543,9 +596,10 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     var want = (360 - center) % 360;
     var cur = ((w.theta % 360) + 360) % 360;
     var delta = (want - cur + 360) % 360;
-    var turns = reduce.matches ? 1 : 8 + randInt(4);
+    var turns = reduce.matches ? 1 : 12 + randInt(4);
     var start = w.theta, total = delta + turns * 360;
-    var dur = reduce.matches ? 700 : 9000 + randInt(2500);
+    var dur = reduce.matches ? 700 : 14000 + randInt(2000);
+    audioInit();
     w.spinning = true; w.lastLive = -1; clearData(w); syncBusy();
     var t0 = performance.now();
     function frame(now) {
@@ -555,12 +609,13 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
       draw(w);
       if (t < 1) {
         var live = underPointer(w);
-        if (live !== w.lastLive) { w.lastLive = live; renderResult(w, 'spin', w.items[live]); }
+        if (live !== w.lastLive) { w.lastLive = live; renderResult(w, 'spin', w.items[live]); tick(w); }
         requestAnimationFrame(frame);
       } else {
         w.theta = start + total;
         draw(w);
         w.spinning = false;
+        chime(w);
         var it = w.items[idx], d = w.describe(it);
         renderResult(w, 'done', it);
         renderData(w, d);
