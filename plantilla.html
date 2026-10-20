@@ -143,6 +143,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
 .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .widget-box { min-height: 420px; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; }
 .note { margin: 0; font-size: 12px; color: var(--muted); }
+.about { margin: 0; font-size: 15px; line-height: 1.55; max-width: 62ch; }
 
 @media (prefers-reduced-motion: reduce) { .hub { transition: none; } }
 </style>
@@ -358,7 +359,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
           ['Informes 10-K (SEC)', 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=' + it[3] + '&type=10-K&owner=include&count=40'],
           ['Noticias', news(it[1] + ' ' + it[0] + ' acciones')]
         ],
-        tv: it[4], facts: stockFacts(it), tabs: stockTabs(it[4])
+        tv: it[4], about: it[9], facts: stockFacts(it), tabs: stockTabs(it[4])
       };
     }
   };
@@ -375,7 +376,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
           ['Whitepaper', search(it[3] + ' ' + it[2] + ' whitepaper')],
           ['Noticias', news(it[3] + ' ' + it[2] + ' crypto')]
         ],
-        tv: it[5], facts: coinFacts(it), tabs: coinTabs(it[1], it[5])
+        tv: it[5], about: it[8], facts: coinFacts(it), tabs: coinTabs(it[1], it[5])
       };
     }
   };
@@ -508,6 +509,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     el.replaceChildren();
     w.cur = d; w.tabIdx = 0;
     el.append(h('p', { class: 'state', text: 'Datos para el análisis' }));
+    if (d.about) el.append(h('p', { class: 'about', text: d.about }));
     if (d.facts.length) {
       var dl = h('dl', { class: 'facts' });
       d.facts.forEach(function (f) { dl.append(h('div', { class: 'fact' }, h('dt', { text: f[0] }), h('dd', { text: String(f[1]) }))); });
@@ -529,7 +531,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     el.append(tabs);
     w.box = h('div', { class: 'widget-box', role: 'tabpanel' });
     el.append(w.box);
-    el.append(h('p', { class: 'note', text: 'Los widgets son de TradingView y CoinGecko y pueden mostrar datos con demora. Los datos de arriba se cargaron el ' + FECHA + '.' }));
+    el.append(h('p', { class: 'note', text: 'Los widgets son de TradingView y CoinGecko y pueden mostrar datos con demora. Los datos de arriba se cargaron el ' + FECHA + '.' + (d.about ? ' La descripción es un resumen redactado con ayuda de IA y puede tener errores o estar desactualizado.' : '') }));
     el.hidden = false;
     selectTab(w, 0);
   }

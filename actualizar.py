@@ -7,7 +7,8 @@ Qué hace:
   3. Baja el top 50 por market cap de CoinGecko (con suministro circulante y máximo).
   4. Marca como "stablecoin o activo tokenizado" a los tokens que no sirven para investigar.
   5. Busca para cada token un símbolo de TradingView que exista (para los widgets).
-  6. Inserta todo en plantilla.html y escribe index.html.
+  6. Suma las descripciones de descripciones.json (texto breve de cada empresa y token).
+  7. Inserta todo en plantilla.html y escribe index.html.
 
 Uso:  python actualizar.py
 Solo usa la librería estándar de Python (no hay que instalar nada).
@@ -191,11 +192,29 @@ def armar_tokens():
     return tokens
 
 
+def cargar_descripciones():
+    """Lee descripciones.json (ticker -> texto para acciones, id de CoinGecko -> texto para tokens)."""
+    ruta = AQUI / "descripciones.json"
+    if not ruta.exists():
+        print("Aviso: no encuentro descripciones.json; la página saldrá sin descripciones.")
+        return {"stocks": {}, "coins": {}}
+    d = json.loads(ruta.read_text(encoding="utf-8"))
+    return {"stocks": d.get("stocks", {}), "coins": d.get("coins", {})}
+
+
 def main():
     sectores, acciones = armar_acciones()
     tokens = armar_tokens()
     if len(acciones) < 400 or len(tokens) < 40:
         sys.exit(f"Datos incompletos (acciones={len(acciones)}, tokens={len(tokens)}). No escribo nada.")
+
+    descripciones = cargar_descripciones()
+    for a in acciones:
+        a.append(descripciones["stocks"].get(a[0], ""))
+    for t in tokens:
+        t.append(descripciones["coins"].get(t[1], ""))
+    sin_desc_a = [a[0] for a in acciones if not a[9]]
+    sin_desc_t = [t[2] for t in tokens if not t[8]]
 
     datos = {"sectors": sectores, "stocks": acciones, "coins": tokens}
     plantilla = (AQUI / "plantilla.html").read_text(encoding="utf-8")
@@ -213,6 +232,12 @@ def main():
     print("Revisá esa lista: si falta o sobra alguno, ajustá STABLES_CONOCIDOS.")
     if sin_tv:
         print(f"Tokens sin símbolo de TradingView (solo tendrán el gráfico de CoinGecko): {', '.join(sin_tv)}")
+    if sin_desc_a or sin_desc_t:
+        print("Faltan descripciones (agregalas a descripciones.json; esos ítems saldrán sin texto):")
+        if sin_desc_a:
+            print("  Acciones:", ", ".join(sin_desc_a))
+        if sin_desc_t:
+            print("  Tokens:", ", ".join(sin_desc_t))
     print(f"index.html escrito ({fecha}).")
 
 
