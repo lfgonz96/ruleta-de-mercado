@@ -599,9 +599,9 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     var want = (360 - center) % 360;
     var cur = ((w.theta % 360) + 360) % 360;
     var delta = (want - cur + 360) % 360;
-    var turns = reduce.matches ? 1 : Math.round(SEGUNDOS_DE_GIRO * 0.85) + randInt(3);
+    var turns = Math.round(SEGUNDOS_DE_GIRO * 0.85) + randInt(3);
     var start = w.theta, total = delta + turns * 360;
-    var dur = reduce.matches ? 700 : SEGUNDOS_DE_GIRO * 1000;
+    var dur = SEGUNDOS_DE_GIRO * 1000;
     audioInit();
     w.spinning = true; w.lastLive = -1; clearData(w); syncBusy();
     var t0 = performance.now();
