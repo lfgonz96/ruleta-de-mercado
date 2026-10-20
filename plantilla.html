@@ -9,11 +9,11 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Ruleta de Mercado">
 <meta property="og:description" content="Sorteá al azar una acción del S&amp;P 500 y un token del top 50 cripto para investigar.">
-<meta property="og:image" content="https://ruletamarket.netlify.app/og-image.png">
+<meta property="og:image" content="https://lfgonz96.github.io/ruleta-de-mercado/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Ruleta de Mercado">
 <meta name="twitter:description" content="Sorteá al azar una acción del S&amp;P 500 y un token del top 50 cripto para investigar.">
-<meta name="twitter:image" content="https://ruletamarket.netlify.app/og-image.png">
+<meta name="twitter:image" content="https://lfgonz96.github.io/ruleta-de-mercado/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
@@ -167,12 +167,29 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
 .count { margin-left: auto; font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
 .count.over { color: #C0392B; font-weight: 600; }
 .card-prev { width: 100%; max-width: 560px; height: auto; aspect-ratio: 1200 / 675; border: 1px solid var(--line); border-radius: 10px; background: #0D1418; }
+#bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+.countdown { display: none; align-items: center; justify-content: center; gap: 16px; margin: 0 0 16px; padding: 12px 18px; background: #120505; border: 2px solid #3A0D0D; border-radius: 14px; }
+.countdown.on { display: flex; }
+.countdown .lbl { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: #FF6B6B; }
+.cd-digits { display: flex; align-items: flex-end; gap: 8px; }
+.cd-digits svg { height: 64px; width: auto; }
+.seg { fill: #3A0C0C; }
+.seg.lit { fill: #FF2B2B; filter: drop-shadow(0 0 5px rgba(255, 43, 43, 0.9)); }
+.cd-dot { fill: #FF2B2B; filter: drop-shadow(0 0 5px rgba(255, 43, 43, 0.9)); }
+.jackpot { margin: 0; font-family: var(--f-display); font-weight: 700; font-size: 14px; letter-spacing: 0.06em; color: #1A1200; background: linear-gradient(90deg, #F5C542, #FFE58A, #F5C542); background-size: 200% 100%; padding: 8px 12px; border-radius: 8px; animation: brillo 1.4s linear infinite; }
+@keyframes brillo { to { background-position: -200% 0; } }
+.panel.win { border-color: #F5C542; animation: shake 0.5s 3, glow 1.1s 3; }
+@keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px) rotate(-0.3deg); } 75% { transform: translateX(6px) rotate(0.3deg); } }
+@keyframes glow { 0%, 100% { box-shadow: 0 0 0 rgba(245, 197, 66, 0); } 50% { box-shadow: 0 0 40px 6px rgba(245, 197, 66, 0.65); } }
+.flash { position: fixed; inset: 0; pointer-events: none; z-index: 49; background: radial-gradient(circle at 50% 40%, rgba(255, 229, 138, 0.75), rgba(255, 229, 138, 0) 65%); animation: flash 0.9s ease-out forwards; }
+@keyframes flash { from { opacity: 1; } to { opacity: 0; } }
 .about { margin: 0; font-size: 15px; line-height: 1.55; max-width: 62ch; }
 
 @media (prefers-reduced-motion: reduce) { .hub { transition: none; } }
 </style>
 </head>
 <body>
+<canvas id="bg" aria-hidden="true"></canvas>
 <div class="shell">
   <div class="top">
     <div>
@@ -182,10 +199,13 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     </div>
     <div class="acts">
       <button class="btn-sound" id="sound" type="button" aria-pressed="true">Sonido: sí</button>
+      <button class="btn-sound" id="bg-btn" type="button" aria-pressed="true">Fondo: sí</button>
       <button class="btn-week" id="spin-week" type="button">Sorteo de la semana</button>
       <button class="btn-all" id="spin-all" type="button">Girar las dos</button>
     </div>
   </div>
+
+  <div class="countdown" id="countdown" role="timer" aria-label="Tiempo que le queda al giro"><span class="lbl">Frenando en</span><span class="cd-digits" id="cd-digits" aria-hidden="true"></span></div>
 
   <div class="panels">
     <section class="panel stock" aria-labelledby="stock-h">
@@ -646,24 +666,25 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
   }
   // Festejo al terminar: lluvia de emojis desde la rueda (dólares para acciones, cripto para tokens)
   var fiesta = null;
-  function celebrate(w) {
+  function celebrate(w, esp) {
     if (document.hidden) return;
     if (!fiesta) {
       fiesta = h('div', { 'aria-hidden': 'true' });
       fiesta.style.cssText = 'position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:50';
       document.body.append(fiesta);
     }
-    var set = w === coin ? ['🪙', '₿', '🚀', '💎', '🪙', '⛓️'] : ['💵', '💰', '💸', '🤑', '💲', '💵'];
+    var set = esp ? esp.emojis : w === coin ? ['🪙', '₿', '🚀', '💎', '🪙', '⛓️'] : ['💵', '💰', '💸', '🤑', '💲', '💵'];
     var r = w.canvas.getBoundingClientRect();
     var ox = r.left + r.width / 2, oy = r.top + r.height / 2;
     var ps = [];
-    for (var i = 0; i < 34; i++) {
+    for (var i = 0; i < (esp ? 95 : 34); i++) {
       var el = h('span', { text: set[randInt(set.length)] });
       var size = 22 + randInt(16);
       el.style.cssText = 'position:absolute;left:0;top:0;line-height:1;will-change:transform,opacity;font-size:' + size + 'px';
       fiesta.append(el);
       var ang = (-150 + randInt(1200) / 10) * Math.PI / 180, sp = 450 + randInt(650);
-      ps.push({ el: el, x: ox, y: oy, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, rot: randInt(360), vr: randInt(600) - 300, life: 2200 + randInt(1400) });
+      var llueve = esp && i % 2;
+      ps.push({ el: el, x: llueve ? randInt(window.innerWidth) : ox, y: llueve ? -30 : oy, vx: llueve ? randInt(200) - 100 : Math.cos(ang) * sp, vy: llueve ? 100 + randInt(300) : Math.sin(ang) * sp, rot: randInt(360), vr: randInt(600) - 300, life: (esp ? 3200 : 2200) + randInt(1800) });
     }
     var t0 = performance.now(), prev = t0;
     function paso(now) {
@@ -700,6 +721,8 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     var it = w.items[idx], d = w.describe(it);
     w.curItem = it;
     renderResult(w, 'done', it);
+    var esp = especial(w, it);
+    if (esp) w.resultEl.prepend(h('p', { class: 'jackpot', text: esp.txt }));
     renderData(w, d);
     w.history.unshift(d.ticker + ' · ' + d.name);
     w.history = w.history.slice(0, 5);
@@ -755,6 +778,10 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
 
   // ===== Compartir en X: texto armado (con humor negro), link propio del sorteo =====
   var PLANTILLAS = [
+    'DALE CAGÓN, METELE TODO A {X}. Lo dice una ruleta, no un asesor financiero: no es recomendación, es humor negro. {L}',
+    'DALE CAGÓN, METELE TODO A {X}. Yo lo investigo esta semana; si la tesis muere, al menos tendrá funeral con gráficos. No es recomendación. {L}',
+    'DALE CAGÓN, METELE TODO A {X}. Decisión tomada por una ruleta y auditada por nadie. Es humor, no es recomendación. {L}',
+    'DALE CAGÓN, METELE TODO A {X}. (Spoiler: la cartera no resucita, pero el análisis sale gratis.) No es recomendación. {L}',
     'Mi comité de inversiones es una ruleta y no acepta reclamos. Esta semana me tocó: {X}. Si la tesis muere, al menos tuvo funeral con gráficos. {L}',
     'El azar eligió y no se hace responsable. Me tocó: {X}. Los analizo esta semana, antes de que mi cartera pase al cementerio. {L}',
     'Dicen que el mercado siempre tiene razón. La ruleta me dio {X}; veamos quién entierra a quién. {L}',
@@ -763,7 +790,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     'Estudiar fundamentales es de cobardes: decide la ruleta. Esta semana: {X}. Que descanse en paz mi capital (o no). {L}',
     'La ruleta decidió mi semana: {X}. El análisis serio viene después, la culpa es del azar desde ahora. {L}'
   ];
-  var share = { v: randInt(PLANTILLAS.length), edited: false };
+  var share = { v: 0, edited: false };
   var shareEl = $('#share'), shareTxt = $('#share-text'), shareX = $('#share-x'), shareCnt = $('#share-count');
 
   function enlaceSorteo() {
@@ -922,6 +949,73 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
   shareX.addEventListener('click', function () { evento('publicar-x'); });
   $('#share-link').addEventListener('click', function () { evento('copiar-link'); copiar(enlaceSorteo(), this, 'Copiar link del sorteo'); });
 
+  // ===== Casos especiales: las 7 magníficas (Alphabet cuenta con GOOGL y GOOG), Bitcoin y Ethereum =====
+  var MAGNIFICAS = { AAPL: 1, MSFT: 1, GOOGL: 1, GOOG: 1, AMZN: 1, NVDA: 1, META: 1, TSLA: 1 };
+  function especial(w, it) {
+    if (w === stock && MAGNIFICAS[it[0]]) return { txt: '★ ¡UNA DE LAS 7 MAGNÍFICAS! ★', emojis: ['👑', '🔥', '🚀', '💎', '🤑', '💰', '🏆', '💵'] };
+    if (w === coin && it[2] === 'BTC') return { txt: '₿ ¡ES BITCOIN, EL REY! ₿', emojis: ['👑', '₿', '🟠', '🔥', '🚀', '🏆', '🪙'] };
+    if (w === coin && it[2] === 'ETH') return { txt: 'Ξ ¡ES ETHEREUM! Ξ', emojis: ['💎', 'Ξ', '🔷', '🔥', '🚀', '🏆', '🪙'] };
+    return null;
+  }
+  function fanfare() {
+    if (!audio.on || !audio.ctx) return;
+    var now = audio.ctx.currentTime;
+    [392, 523.25, 659.25, 783.99, 1046.5, 1318.5, 1568, 2093].forEach(function (f, i) { beep(f, now + i * 0.09, 0.22, 0.1, 'square'); });
+    [523.25, 659.25, 783.99, 1046.5].forEach(function (f) { beep(f, now + 0.8, 1.1, 0.09, 'sawtooth'); });
+    for (var i = 0; i < 14; i++) beep(2600 + (i % 3) * 300, now + 1.0 + i * 0.07, 0.06, 0.07, 'triangle');
+  }
+  function brilloDorado(w) {
+    var panel = w.canvas.closest('.panel');
+    panel.classList.add('win'); setTimeout(function () { panel.classList.remove('win'); }, 3300);
+    var f = h('div', { class: 'flash', 'aria-hidden': 'true' });
+    document.body.append(f); setTimeout(function () { f.remove(); }, 1000);
+  }
+
+  // ===== Contador regresivo en números rojos (7 segmentos) =====
+  var SEG = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
+  var SEG_PUNTOS = { a: '10,4 46,4 40,12 16,12', b: '48,6 48,46 42,40 42,14', c: '48,54 48,94 42,86 42,60', d: '10,96 46,96 40,88 16,88', e: '8,54 8,94 14,86 14,60', f: '8,6 8,46 14,40 14,14', g: '12,50 18,44 40,44 46,50 40,56 18,56' };
+  var cd = { el: $('#countdown'), digs: [], corriendo: false, ult: -1 };
+  (function armarContador() {
+    var NS = 'http://www.w3.org/2000/svg', cont = $('#cd-digits');
+    function digito() {
+      var svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 56 100');
+      Object.keys(SEG_PUNTOS).forEach(function (k) {
+        var p = document.createElementNS(NS, 'polygon'); p.setAttribute('points', SEG_PUNTOS[k]); p.setAttribute('class', 'seg'); p.dataset.s = k; svg.append(p);
+      });
+      return svg;
+    }
+    var d1 = digito(), d2 = digito(), d3 = digito(), dot = document.createElementNS(NS, 'svg');
+    dot.setAttribute('viewBox', '0 0 12 100'); dot.style.width = '12px';
+    var c = document.createElementNS(NS, 'circle'); c.setAttribute('cx', 6); c.setAttribute('cy', 94); c.setAttribute('r', 5); c.setAttribute('class', 'cd-dot'); dot.append(c);
+    cont.append(d1, d2, dot, d3); cd.digs = [d1, d2, d3];
+  })();
+  function pintarDigito(svg, n) {
+    var enc = SEG[n];
+    svg.querySelectorAll('.seg').forEach(function (p) { p.classList.toggle('lit', enc.indexOf(p.dataset.s) >= 0); });
+  }
+  function pintarContador(ms) {
+    var dec = Math.max(0, Math.min(999, Math.ceil(ms / 100)));
+    pintarDigito(cd.digs[0], Math.floor(dec / 100) % 10);
+    pintarDigito(cd.digs[1], Math.floor(dec / 10) % 10);
+    pintarDigito(cd.digs[2], dec % 10);
+  }
+  function cdFrame(now) {
+    var rest = 0, algo = false;
+    wheels.forEach(function (w) { if (w.spinning) { algo = true; rest = Math.max(rest, w.endAt - now); } });
+    pintarContador(rest);
+    var seg = Math.ceil(rest / 1000);
+    if (algo && seg !== cd.ult) {
+      if (seg >= 1 && seg <= 3 && audio.on && audio.ctx) beep(330, audio.ctx.currentTime, 0.12, 0.12, 'square');
+      cd.ult = seg;
+    }
+    if (algo) requestAnimationFrame(cdFrame);
+    else { cd.corriendo = false; setTimeout(function () { if (!cd.corriendo) cd.el.classList.remove('on'); }, 1200); }
+  }
+  function arrancarContador() {
+    cd.el.classList.add('on'); cd.ult = -1;
+    if (!cd.corriendo) { cd.corriendo = true; requestAnimationFrame(cdFrame); }
+  }
+
   function spin(w, forced) {
     if (w.spinning) return;
     evento(forced == null ? 'giro-' + w.key : 'semanal-' + w.key);
@@ -934,7 +1028,9 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     var start = w.theta, total = delta + turns * 360;
     var dur = SEGUNDOS_DE_GIRO * 1000;
     audioInit();
+    w.endAt = performance.now() + dur;
     w.spinning = true; w.lastLive = -1; clearData(w); w.curItem = null; updateShare(); syncBusy();
+    arrancarContador();
     var t0 = performance.now();
     function frame(now) {
       var t = Math.min(1, (now - t0) / dur);
@@ -949,9 +1045,10 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
         w.theta = start + total;
         draw(w);
         w.spinning = false;
-        chime(w);
-        celebrate(w);
         finish(w, idx);
+        var esp = especial(w, w.items[idx]);
+        if (esp) { fanfare(); celebrate(w, esp); brilloDorado(w); evento('especial-' + (w === coin ? w.items[idx][2] : w.items[idx][0])); }
+        else { chime(w); celebrate(w); }
         syncBusy();
       }
     }
@@ -988,6 +1085,50 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     var pie = document.querySelector('.foot');
     if (pie) pie.append(' Se miden visitas y acciones de forma anónima, sin cookies.');
   }
+  // ===== Fondo: flechas verdes (suben) y rojas (bajan), muy tenues =====
+  var bg = { cv: $('#bg'), on: true, ps: [], run: false, last: 0 };
+  try { if (localStorage.getItem('ruleta-fondo') === '0') bg.on = false; } catch (e) {}
+  var bgBtn = $('#bg-btn');
+  function syncBg() { bgBtn.setAttribute('aria-pressed', bg.on ? 'true' : 'false'); bgBtn.textContent = bg.on ? 'Fondo: sí' : 'Fondo: no'; }
+  function bgTamano() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 1.5), W = window.innerWidth, H = window.innerHeight;
+    bg.cv.width = Math.round(W * dpr); bg.cv.height = Math.round(H * dpr); bg.W = W; bg.H = H; bg.dpr = dpr;
+    var n = Math.max(22, Math.min(64, Math.round(W * H / 30000)));
+    while (bg.ps.length < n) bg.ps.push({ x: randInt(1000) / 1000, y: randInt(1000) / 1000, s: 18 + randInt(40), v: 14 + randInt(30), up: randInt(2) === 0, ph: randInt(628) / 100, a: 0.5 + randInt(50) / 100 });
+    bg.ps.length = n;
+  }
+  function flecha(c, s) {
+    c.beginPath();
+    c.moveTo(0, -s / 2); c.lineTo(s * 0.5, 0); c.lineTo(s * 0.18, 0); c.lineTo(s * 0.18, s * 0.5);
+    c.lineTo(-s * 0.18, s * 0.5); c.lineTo(-s * 0.18, 0); c.lineTo(-s * 0.5, 0); c.closePath(); c.fill();
+  }
+  function bgFrame(now) {
+    if (!bg.on) { bg.run = false; bg.cv.getContext('2d').clearRect(0, 0, bg.cv.width, bg.cv.height); return; }
+    requestAnimationFrame(bgFrame);
+    if (document.hidden || now - bg.last < 33) return;
+    var dt = Math.min(0.1, (now - bg.last) / 1000); bg.last = now;
+    var c = bg.cv.getContext('2d'), oscuro = theme() === 'dark', t = now / 1000;
+    c.setTransform(bg.dpr, 0, 0, bg.dpr, 0, 0); c.clearRect(0, 0, bg.W, bg.H);
+    bg.ps.forEach(function (p) {
+      p.y += (p.up ? -1 : 1) * p.v * dt / bg.H;
+      if (p.y < -0.1) p.y = 1.1; else if (p.y > 1.1) p.y = -0.1;
+      var x = p.x * bg.W + Math.sin(t * 0.4 + p.ph) * 14, y = p.y * bg.H;
+      var alfa = (oscuro ? 0.2 : 0.15) * p.a;
+      c.save(); c.translate(x, y);
+      if (!p.up) c.rotate(Math.PI);
+      c.fillStyle = p.up ? 'rgba(' + (oscuro ? '61,199,154' : '24,150,100') + ',' + alfa + ')' : 'rgba(' + (oscuro ? '255,107,107' : '214,69,69') + ',' + alfa + ')';
+      flecha(c, p.s); c.restore();
+    });
+  }
+  function bgArrancar() { if (bg.on && !bg.run) { bg.run = true; requestAnimationFrame(bgFrame); } }
+  bgBtn.addEventListener('click', function () {
+    bg.on = !bg.on;
+    try { localStorage.setItem('ruleta-fondo', bg.on ? '1' : '0'); } catch (e) {}
+    syncBg(); bgArrancar();
+  });
+  window.addEventListener('resize', bgTamano);
+  bgTamano(); syncBg(); bgArrancar();
+
   setCoinPool();
   readTokens();
   wheels.forEach(function (w) { clearData(w); renderResult(w, 'idle'); renderHistory(w); draw(w); });
