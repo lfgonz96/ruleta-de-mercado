@@ -1,0 +1,11 @@
+   .git
+   .github
+   .gitignore
+   .assetsignore
+   *.py
+   *.md
+   *.bak
+   descripciones.json
+   plantilla.html
+   wrangler.*
+   node_modules
