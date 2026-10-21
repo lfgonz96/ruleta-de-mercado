@@ -701,11 +701,21 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     requestAnimationFrame(paso);
   }
 
-  // ===== Narrador estilo locutor de casino (voz del navegador, gratis; cada dispositivo trae sus voces) =====
-  var narr = { ok: 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window, on: true, voz: null, pend: 0, ronda: 0 };
+  // ===== Narrador estilo locutor de casino =====
+  // 1) Si existe la carpeta audio/ (clips con tu voz, generados con generar_voz.py), reproduce esos clips.
+  // 2) Si faltan, usa la voz del navegador (gratis; cada dispositivo trae las suyas).
+  var TTS_OK = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+  var narr = { ok: true, on: true, voz: null, pend: 0, ronda: 0 };
   try { if (localStorage.getItem('ruleta-narrador') === '0') narr.on = false; } catch (e) {}
+  var VOZ = { base: 'audio/', ext: 'mp3', cache: {}, off: false, actual: null };
+  var FRASES = {"bienvenida":"¡¡BIENVENIDOS a la ruleta de mercado, BOLUDOS!! ¡Acá se viene a perder plata con ESTILO!","hagan-juego":"¡¡HAGAN JUEGO, señores, HAGAN JUEGO!! ¡¡Metele toda la guita, dale, CAGÓN!!","hagan-juego-1":"¡¡HAGAN JUEGO!! ¡¡Gastatela TODA, si tenés HUEVOS!!","hagan-juego-2":"¡¡HAGAN JUEGO, che!! ¡¡Sandra no se entera, dale, INÚTIL!!","ya-no-va-mas":"¡¡YA NO VA MÁS!! ¡¡Ahora REZÁ, inútil!!","ya-no-va-mas-1":"¡¡YA NO VA MÁS, boludo!! ¡¡No hay vuelta atrás!!","ya-no-va-mas-2":"¡¡YA NO VA MÁS!! ¡¡Tarde para llorar, CAGÓN!!","tres":"¡¡TRES!!","dos":"¡¡DOS!!","uno":"¡¡UNO!!","intro-a0":"¡¡Y la bolita cae en…","intro-a1":"¡¡Y la ruleta eligió, para tu DESGRACIA…","intro-a2":"¡¡Ahí está, ahí está!! ¡¡Tu próxima VÍCTIMA es…","intro-a3":"¡¡ATENCIÓN, atención!! ¡¡Sale…","intro-t0":"¡¡Y en la rueda cripto, la TIMBA de verdad, sale…","intro-t1":"¡¡La rueda cripto se FRENA en…","intro-t2":"¡¡Se viene la VOLATILIDAD!! ¡¡Sale…","remate-0":"¡¡Metele toda la guita, BOLUDO!!","remate-1":"¡¡Dale, CAGÓN, que no se vive dos veces!!","remate-2":"¡¡Si perdés todo, la culpa es TUYA, inútil!!","remate-3":"¡¡Gastatela TODA, si tenés HUEVOS!!","remate-4":"¡¡Sandra dijo que no lo hagas!! ¡¡Hacelo IGUAL!!","remate-5":"¡¡Esto no es una recomendación, es una CARGADA, boludo!!","remate-6":"¡¡A ver cuánto tardás en ARREPENTIRTE!!","remate-7":"¡¡Tranqui, es solo plata!! ¡¡Tu plata, pero solo plata!!","remate-8":"¡¡Que Sandra no se entere de esto, eh!!","remate-9":"¡¡Todo al VERDE, campeón, total no tenés NADA que perder!!","remate-10":"¡¡INVESTIGALO antes, aunque sea, INÚTIL!!","remate-11":"¡¡Y si sale mal, decile a todos que fue una inversión a LARGO PLAZO!!","remate-12":"¡¡Qué cara de perdedor que tenés, che!!","remate-13":"¡¡El que no arriesga no gana!! ¡¡Y vos igual PERDÉS!!","jackpot-magnifica":"¡¡JACKPOT, JACKPOT, JACKPOT!! ¡¡Una de las SIETE MAGNÍFICAS!! ¡¡Hasta un inútil acierta alguna!!","jackpot-btc":"¡¡JACKPOT!! ¡¡Es BITCOIN, el REY de las criptomonedas!! ¡¡Hasta vos podés no cagarla!!","jackpot-eth":"¡¡JACKPOT!! ¡¡Es ETHEREUM!! ¡¡Gastatela toda en GAS, boludo!!","cierre":"¡¡GRACIAS por jugar, BOLUDOS!! Esto NO es una recomendación de inversión. ¡¡Si perdés plata, NO ME LLORES!!"};
+  var N_HAGAN = 3, N_YA = 3, N_INTRO_A = 4, N_INTRO_T = 3, N_REMATE = 14;
+  function elegir(base, n) { var i = randInt(n); return i ? base + '-' + i : base; }
+  var PRECARGA = ['tres', 'dos', 'uno', 'cierre'];
+  var cola = [], hablando = false, gen = 0;
+
   function elegirVoz() {
-    if (!narr.ok) return;
+    if (!TTS_OK) return;
     var mejor = null, pm = -1;
     (speechSynthesis.getVoices() || []).forEach(function (v) {
       var l = (v.lang || '').replace('_', '-').toLowerCase(), p = -1;
@@ -717,42 +727,105 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     });
     narr.voz = mejor;
   }
-  if (narr.ok) { elegirVoz(); if (speechSynthesis.addEventListener) speechSynthesis.addEventListener('voiceschanged', elegirVoz); }
-  function hablar(texto, o) {
-    if (!narr.ok || !narr.on) return;
-    o = o || {};
+  if (TTS_OK) { elegirVoz(); if (speechSynthesis.addEventListener) speechSynthesis.addEventListener('voiceschanged', elegirVoz); }
+
+  // Voz del navegador (plan B)
+  function usarTTS(texto, o, done) {
+    if (!TTS_OK) { done(); return; }
+    var terminado = false;
+    function fin() { if (!terminado) { terminado = true; done(); } }
     try {
-      if (o.cortar) speechSynthesis.cancel();
       var u = new SpeechSynthesisUtterance(texto);
       u.lang = (narr.voz && narr.voz.lang) || 'es-AR';
       if (narr.voz) u.voice = narr.voz;
       u.rate = o.rate || 1.05; u.pitch = o.pitch || 0.8; u.volume = 1;
+      u.onend = fin; u.onerror = fin;
       speechSynthesis.speak(u);
-    } catch (e) {}
+      setTimeout(fin, 4000 + texto.length * 110);
+    } catch (e) { fin(); }
   }
-  function elegir(lista) { return lista[randInt(lista.length)]; }
-  function frasePremio(w, it, esp) {
+
+  // Clips grabados (se bajan y decodifican con WebAudio, que funciona igual en celulares)
+  function getClip(key) {
+    var st = VOZ.cache[key];
+    if (st) return st;
+    if (!audio.ctx) return { ok: false };
+    st = VOZ.cache[key] = { ok: null, buf: null };
+    fetch(VOZ.base + key + '.' + VOZ.ext)
+      .then(function (r) { if (!r.ok) throw new Error('404'); return r.arrayBuffer(); })
+      .then(function (ab) { return new Promise(function (res, rej) { audio.ctx.decodeAudioData(ab, res, rej); }); })
+      .then(function (b) { st.buf = b; st.ok = true; })
+      .catch(function () { st.ok = false; if (key.indexOf('hagan-juego') === 0) VOZ.off = true; });
+    return st;
+  }
+  function precargar(keys) { if (!VOZ.off) keys.forEach(getClip); }
+  function esperarClips(keys, cb, t0) {
+    t0 = t0 || Date.now();
+    var sts = keys.map(getClip);
+    if (sts.some(function (x) { return x.ok === false; })) return cb(false);
+    if (sts.every(function (x) { return x.ok === true; })) return cb(true);
+    if (Date.now() - t0 > 1500) return cb(false);
+    setTimeout(function () { esperarClips(keys, cb, t0); }, 60);
+  }
+  function sonarClips(keys, done) {
+    var i = 0;
+    (function sig() {
+      if (i >= keys.length) return done();
+      var src = audio.ctx.createBufferSource();
+      src.buffer = VOZ.cache[keys[i++]].buf; src.connect(audio.ctx.destination);
+      VOZ.actual = src; src.onended = sig; src.start();
+    })();
+  }
+
+  // Cola: una frase a la vez; con {cortar:true} se corta lo que esté sonando
+  function parar() {
+    try { if (VOZ.actual) { VOZ.actual.onended = null; VOZ.actual.stop(); } } catch (e) {}
+    VOZ.actual = null;
+    if (TTS_OK) { try { speechSynthesis.cancel(); } catch (e) {} }
+  }
+  function siguiente() {
+    var job = cola.shift();
+    if (!job) { hablando = false; return; }
+    hablando = true;
+    var g = gen, usado = false;
+    job(function () { if (usado || g !== gen) return; usado = true; siguiente(); });
+  }
+  function silenciar() { gen++; cola.length = 0; hablando = false; parar(); }
+  function decir(keys, texto, o) {
+    if (!narr.on) return;
+    o = o || {};
+    if (o.cortar) silenciar();
+    cola.push(function (done) {
+      if (VOZ.off || !keys || !keys.length) return usarTTS(texto, o, done);
+      esperarClips(keys, function (ok) { if (ok) sonarClips(keys, done); else usarTTS(texto, o, done); });
+    });
+    if (!hablando) siguiente();
+  }
+
+  function claveClip(w, it) { return w === coin ? 't-' + it[1] : 'a-' + it[0].replace(/\./g, '-'); }
+  function armarFrase(w, it, esp) {
     var n = w === coin ? it[3] : it[1];
     if (esp) {
-      if (w === coin && it[2] === 'BTC') return '¡¡Jackpot, jackpot!! ¡Es Bitcoin, el rey de las criptomonedas!';
-      if (w === coin) return '¡¡Jackpot, jackpot!! ¡Es Ethereum!';
-      return '¡¡Jackpot, jackpot, jackpot!! ¡Una de las siete magníficas! ¡' + n + '!';
+      var kj = 'jackpot-magnifica';
+      if (w === coin && it[2] === 'BTC') return { keys: ['jackpot-btc'], texto: FRASES['jackpot-btc'] };
+      if (w === coin) return { keys: ['jackpot-eth'], texto: FRASES['jackpot-eth'] };
+      return { keys: [kj, claveClip(w, it)], texto: FRASES[kj] + ' ¡¡' + n + '!!' };
     }
-    if (w === coin) return elegir(['¡Y en la rueda cripto sale… ' + n + '!', '¡La rueda cripto se detiene en… ' + n + '!']) + ' Número ' + it[0] + ' por capitalización de mercado.';
-    return elegir(['¡Y la bolita cae en… ' + n + '!', '¡Y la ruleta eligió… ' + n + '!', '¡Atención, atención! ¡Sale… ' + n + '!']) + ' Del sector ' + SECTORS[it[2]].name + '.';
+    var ki = w === coin ? 'intro-t' + randInt(N_INTRO_T) : 'intro-a' + randInt(N_INTRO_A);
+    var kr = 'remate-' + randInt(N_REMATE);
+    return { keys: [ki, claveClip(w, it), kr], texto: FRASES[ki] + ' ' + n + '!! ' + FRASES[kr] };
   }
+
   var narrBtn = $('#narr');
   function syncNarr() { narrBtn.setAttribute('aria-pressed', narr.on ? 'true' : 'false'); narrBtn.textContent = narr.on ? 'Narrador: sí' : 'Narrador: no'; }
-  if (narr.ok) {
-    narrBtn.hidden = false; syncNarr();
-    narrBtn.addEventListener('click', function () {
-      narr.on = !narr.on;
-      try { localStorage.setItem('ruleta-narrador', narr.on ? '1' : '0'); } catch (e) {}
-      syncNarr();
-      if (narr.on) hablar('¡Bienvenidos a la ruleta de mercado, señores!', { cortar: true });
-      else { try { speechSynthesis.cancel(); } catch (e) {} }
-    });
-  }
+  narrBtn.hidden = false; syncNarr();
+  narrBtn.addEventListener('click', function () {
+    narr.on = !narr.on;
+    try { localStorage.setItem('ruleta-narrador', narr.on ? '1' : '0'); } catch (e) {}
+    syncNarr();
+    if (narr.on) { audioInit(); precargar(['bienvenida']); decir(['bienvenida'], FRASES['bienvenida'], { cortar: true }); }
+    else silenciar();
+  });
 
   // Muestra el resultado de una rueda (al terminar el giro o al abrir un link compartido).
   function finish(w, idx) {
@@ -1044,7 +1117,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     var seg = Math.ceil(rest / 1000);
     if (algo && seg !== cd.ult) {
       if (seg >= 1 && seg <= 3) {
-        if (narr.ok && narr.on) hablar(['', '¡Uno!', '¡Dos!', '¡Tres!'][seg], { cortar: true, rate: 1.15 });
+        if (narr.on) decir([['', 'uno', 'dos', 'tres'][seg]], ['', FRASES.uno, FRASES.dos, FRASES.tres][seg], { cortar: true, rate: 1.15 });
         else if (audio.on && audio.ctx) beep(330, audio.ctx.currentTime, 0.12, 0.12, 'square');
       }
       cd.ult = seg;
@@ -1069,10 +1142,14 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     var start = w.theta, total = delta + turns * 360;
     var dur = SEGUNDOS_DE_GIRO * 1000;
     audioInit();
+    w.frase = armarFrase(w, w.items[idx], especial(w, w.items[idx]));
+    precargar(w.frase.keys.concat(PRECARGA));
     if (narr.pend === 0) {
       narr.ronda = 0;
-      hablar('¡Hagan juego, señores, hagan juego!', { cortar: true });
-      setTimeout(function () { if (stock.spinning || coin.spinning) hablar('¡Ya no va más!'); }, Math.min(5500, dur * 0.35));
+      var kh = elegir('hagan-juego', N_HAGAN), ky = elegir('ya-no-va-mas', N_YA);
+      precargar([kh, ky]);
+      decir([kh], FRASES[kh], { cortar: true });
+      setTimeout(function () { if (stock.spinning || coin.spinning) decir([ky], FRASES[ky]); }, Math.min(5500, dur * 0.35));
     }
     narr.pend++; narr.ronda++;
     w.endAt = performance.now() + dur;
@@ -1094,11 +1171,11 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
         w.spinning = false;
         finish(w, idx);
         var esp = especial(w, w.items[idx]);
-        hablar(frasePremio(w, w.items[idx], esp), { rate: esp ? 1.12 : 1.02, pitch: esp ? 0.95 : 0.8 });
+        decir(w.frase.keys, w.frase.texto, { rate: esp ? 1.12 : 1.02, pitch: esp ? 0.95 : 0.8 });
         narr.pend--;
         if (narr.pend <= 0) {
           narr.pend = 0;
-          if (narr.ronda >= 2) hablar('¡Gracias por jugar, señores! Recuerden: esto no es una recomendación de inversión.', { rate: 1 });
+          if (narr.ronda >= 2) decir(['cierre'], FRASES['cierre'], { rate: 1 });
         }
         if (esp) { fanfare(); celebrate(w, esp); brilloDorado(w); evento('especial-' + (w === coin ? w.items[idx][2] : w.items[idx][0])); }
         else { chime(w); celebrate(w); }
