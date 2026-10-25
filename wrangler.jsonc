@@ -1,0 +1,19 @@
+{
+  // Configuración del sitio en Cloudflare: archivos estáticos + servidor del ranking (worker.js) + base de datos D1.
+  "name": "ruleta-de-mercado",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ruleta-ranking",
+      "database_id": "46e7ff8f-634f-4088-b5b7-3acc5dd90824"
+    }
+  ],
+  "observability": { "enabled": true }
+}

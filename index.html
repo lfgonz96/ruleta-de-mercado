@@ -186,6 +186,26 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
 .about { margin: 0; font-size: 15px; line-height: 1.55; max-width: 62ch; }
 
 @media (prefers-reduced-motion: reduce) { .hub { transition: none; } }
+/* Ranking de magníficas */
+dialog.rk { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 16px; padding: 0; width: min(460px, calc(100% - 32px)); max-height: calc(100% - 48px); overflow: auto; }
+dialog.rk::backdrop { background: rgba(0, 0, 0, 0.6); }
+.rk-in { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.rk-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rk-head h2 { font-size: 14px; }
+.rk-note, .rk-foot { margin: 0; font-size: 12.5px; color: var(--muted); }
+.rk-pend { margin: 0; padding: 10px 12px; border: 2px solid var(--crypto); border-radius: 10px; font-size: 14px; font-weight: 600; }
+.rk-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rk-form label { font-size: 13px; color: var(--muted); width: 100%; }
+.rk-form input { flex: 1 1 160px; min-width: 0; font: inherit; font-size: 16px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.rk-msg { margin: 0; min-height: 1.2em; font-size: 13px; color: var(--crypto); font-weight: 600; }
+.rk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.rk-list li { display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; align-items: baseline; padding: 9px 2px; border-bottom: 1px solid var(--line); font-size: 15px; }
+.rk-list .pos { font-family: var(--f-mono); color: var(--muted); }
+.rk-list .al { overflow-wrap: anywhere; }
+.rk-list .n { font-family: var(--f-mono); font-weight: 600; }
+.rk-list li.yo { background: var(--chip); }
+.rk-list li.top1 .pos::before { content: '👑'; margin-right: 2px; }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 60; max-width: min(520px, calc(100% - 32px)); background: var(--ink); color: var(--bg); padding: 12px 16px; border-radius: 12px; font-size: 14px; font-weight: 600; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); }
 </style>
 </head>
 <body>
@@ -199,6 +219,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     </div>
     <div class="acts">
       <button class="btn-sound" id="narr" type="button" aria-pressed="true" hidden>Narrador: sí</button>
+      <button class="btn-sound" id="rank-btn" type="button" hidden>Ranking</button>
       <button class="btn-week" id="spin-week" type="button">Sorteo de la semana</button>
       <button class="btn-all" id="spin-all" type="button">Girar las dos</button>
     </div>
@@ -271,6 +292,23 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
 
   <p class="foot">Listas cargadas el 19/10/2026: constituyentes del S&amp;P 500 (<a href="https://github.com/datasets/s-and-p-500-companies" target="_blank" rel="noopener noreferrer">datasets/s-and-p-500-companies</a>) y top 50 por capitalización de <a href="https://www.coingecko.com/" target="_blank" rel="noopener noreferrer">CoinGecko</a>. Sirve para elegir qué investigar, no es una recomendación de inversión.</p>
 </div>
+
+<dialog class="rk" id="rank" aria-labelledby="rank-h">
+  <div class="rk-in">
+    <div class="rk-head"><h2 id="rank-h">Ranking de magníficas</h2><button class="btn-sec" id="rank-x" type="button">Cerrar</button></div>
+    <p class="rk-note">Suma 1 cada vez que te sale una de las 7 magníficas, Bitcoin o Ethereum en un giro libre (no cuenta el sorteo de la semana). El sorteo lo hace el servidor, así que no se puede falsear.</p>
+    <p class="rk-pend" id="rank-pend" hidden>🏆 ¡Te salió una y todavía no la sumaste! Poné un alias para entrar al ranking.</p>
+    <form class="rk-form" id="rank-form" autocomplete="off">
+      <label for="rank-alias">Tu alias (3 a 16 caracteres, inventado)</label>
+      <input id="rank-alias" type="text" minlength="3" maxlength="16" required>
+      <button class="btn-all" type="submit">Guardar</button>
+    </form>
+    <p class="rk-msg" id="rank-msg" role="status"></p>
+    <ol class="rk-list" id="rank-list"></ol>
+    <p class="rk-foot" id="rank-foot"></p>
+  </div>
+</dialog>
+<p class="toast" id="toast" role="status" aria-live="polite" hidden></p>
 
 <script>
 (function () {
@@ -1130,9 +1168,118 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
     if (!cd.corriendo) { cd.corriendo = true; requestAnimationFrame(cdFrame); }
   }
 
+  // ===== Ranking de magníficas =====
+  // El sorteo "libre" lo hace el servidor (/api/giro) y entrega un ticket; si sale una magnífica, Bitcoin o Ethereum,
+  // el ticket se canjea por +1 en el ranking. Si el servidor no responde, la ruleta funciona igual (sin ranking).
+  var API = { on: location.protocol.indexOf('http') === 0, fallos: 0, pend: [] };
+  var yo = { alias: '', dueno: '' };
+  try { yo.alias = localStorage.getItem('ruleta-alias') || ''; yo.dueno = localStorage.getItem('ruleta-dueno') || ''; } catch (e) {}
+  if (!/^[a-f0-9]{32}$/.test(yo.dueno)) {
+    var rb = new Uint8Array(16); crypto.getRandomValues(rb);
+    yo.dueno = Array.prototype.map.call(rb, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+    try { localStorage.setItem('ruleta-dueno', yo.dueno); } catch (e) {}
+  }
+  function api(ruta, cuerpo, ms) {
+    var ctl = window.AbortController ? new AbortController() : null;
+    var to = ctl ? setTimeout(function () { ctl.abort(); }, ms || 4000) : null;
+    var opt = cuerpo ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cuerpo) } : {};
+    if (ctl) opt.signal = ctl.signal;
+    return fetch(ruta, opt).then(function (r) {
+      clearTimeout(to);
+      return r.json().then(function (j) { return { st: r.status, j: j }; });
+    }, function (e) { clearTimeout(to); throw e; });
+  }
+  function pedirGiro(w) {
+    return api('/api/giro', { wheel: w.key, filtro: filter.checked }, 2500).then(function (r) {
+      if (r.st !== 200 || !r.j.ticket) return null;
+      var idx = -1;
+      for (var i = 0; i < w.items.length; i++) { if ((w === stock ? w.items[i][0] : w.items[i][1]) === r.j.key) { idx = i; break; } }
+      return idx < 0 ? null : { idx: idx, ticket: r.j.ticket };
+    }).catch(function () { return null; });
+  }
+
+  var toastEl = $('#toast'), toastT = null;
+  function aviso(msg) {
+    toastEl.textContent = msg; toastEl.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(function () { toastEl.hidden = true; }, 8000);
+  }
+  var rkEl = $('#rank'), rkMsg = $('#rank-msg'), rkList = $('#rank-list'), rkAlias = $('#rank-alias'), rkPend = $('#rank-pend'), rkFoot = $('#rank-foot');
+  function aliasOk(a) { return a.length >= 3 && a.length <= 16 && /^[\p{L}\p{N} ._-]+$/u.test(a); }
+  function pintarRanking(d) {
+    rkList.replaceChildren();
+    if (!d || !d.top || !d.top.length) { rkList.append(h('li', {}, h('span', { class: 'pos', text: '' }), h('span', { class: 'al', text: 'Todavía no hay nadie. ¡Sé el primero!' }), h('span', { class: 'n', text: '' }))); rkFoot.textContent = ''; return; }
+    d.top.forEach(function (f, i) {
+      var li = h('li', { class: (i === 0 ? 'top1 ' : '') + (yo.alias && f.alias.toLowerCase() === yo.alias.toLowerCase() ? 'yo' : '') },
+        h('span', { class: 'pos', text: String(i + 1) }), h('span', { class: 'al', text: f.alias }), h('span', { class: 'n', text: String(f.hits) }));
+      rkList.append(li);
+    });
+    rkFoot.textContent = d.jugadores + (d.jugadores === 1 ? ' jugador' : ' jugadores') + ' · ' + d.aciertos + (d.aciertos === 1 ? ' acierto' : ' aciertos') + ' en total.';
+  }
+  function cargarRanking() {
+    api('/api/ranking', null, 5000).then(function (r) {
+      if (r.st === 200) pintarRanking(r.j);
+      else { rkList.replaceChildren(); rkMsg.textContent = 'El ranking todavía no está activo.'; }
+    }).catch(function () { rkMsg.textContent = 'No se pudo cargar el ranking. Probá de nuevo en un rato.'; });
+  }
+  function abrirRanking() {
+    evento('ranking-abrir');
+    rkMsg.textContent = ''; rkAlias.value = yo.alias; rkPend.hidden = !API.pend.length;
+    if (rkEl.showModal) { if (!rkEl.open) rkEl.showModal(); } else rkEl.setAttribute('open', '');
+    cargarRanking();
+  }
+  function cerrarRanking() { if (rkEl.close) rkEl.close(); else rkEl.removeAttribute('open'); }
+  function reclamarPend() {
+    var t = API.pend.shift();
+    if (!t) { rkPend.hidden = true; return Promise.resolve(); }
+    return api('/api/registrar', { ticket: t, alias: yo.alias, owner: yo.dueno }, 6000).then(function (r) {
+      if (r.st === 200 && r.j.ok) {
+        evento('ranking-suma');
+        aviso('¡Sumaste 1 al ranking como ' + r.j.alias + '! Llevás ' + r.j.hits + ' (puesto ' + r.j.puesto + ').');
+        return reclamarPend();
+      }
+      if (r.j.error === 'alias-ocupado' || r.j.error === 'alias-invalido') {
+        API.pend.unshift(t); yo.alias = '';
+        try { localStorage.removeItem('ruleta-alias'); } catch (e) {}
+        abrirRanking(); rkMsg.textContent = r.j.mensaje || 'Ese alias no sirve. Elegí otro.';
+        return null;
+      }
+      if (r.j.error !== 'ya-canjeado') aviso(r.j.mensaje || 'No se pudo sumar al ranking.');
+      return reclamarPend();
+    }).catch(function () { API.pend.unshift(t); aviso('Sin conexión con el ranking: tu acierto queda pendiente.'); });
+  }
+  function premio(ticket) {
+    API.pend.push(ticket);
+    if (yo.alias) reclamarPend(); else abrirRanking();
+  }
+  $('#rank-form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var a = rkAlias.value.replace(/\s+/g, ' ').trim();
+    if (!aliasOk(a)) { rkMsg.textContent = 'Usá de 3 a 16 letras, números, espacios, punto, guion o guion bajo.'; return; }
+    yo.alias = a;
+    try { localStorage.setItem('ruleta-alias', a); } catch (e) {}
+    rkMsg.textContent = 'Alias guardado: ' + a;
+    if (API.pend.length) reclamarPend().then(cargarRanking); else cargarRanking();
+  });
+  $('#rank-x').addEventListener('click', cerrarRanking);
+  rkEl.addEventListener('click', function (e) { if (e.target === rkEl) cerrarRanking(); });
+  var rankBtn = $('#rank-btn');
+  if (API.on) { rankBtn.hidden = false; rankBtn.addEventListener('click', abrirRanking); }
+
+  // Pide el sorteo al servidor (si responde) y recién ahí gira.
   function spin(w, forced) {
+    if (w.spinning || w.pidiendo) return;
+    if (forced != null || !API.on) return girar(w, forced, null, false);
+    w.pidiendo = true; w.btn.disabled = true; w.btn.textContent = '…';
+    pedirGiro(w).then(function (t) {
+      w.pidiendo = false;
+      if (!t) { API.fallos++; if (API.fallos >= 3) API.on = false; } else API.fallos = 0;
+      girar(w, t ? t.idx : null, t ? t.ticket : null, !!t);
+    });
+  }
+
+  function girar(w, forced, ticket, viaServidor) {
     if (w.spinning) return;
-    evento(forced == null ? 'giro-' + w.key : 'semanal-' + w.key);
+    evento((forced == null || viaServidor) ? 'giro-' + w.key : 'semanal-' + w.key);
     var N = w.items.length, idx = forced == null ? randInt(N) : forced;
     var center = (idx + 0.5) / N * 360;
     var want = (360 - center) % 360;
@@ -1177,7 +1324,7 @@ canvas { display: block; width: 100%; aspect-ratio: 1; }
           narr.pend = 0;
           if (narr.ronda >= 2) decir(['cierre'], FRASES['cierre'], { rate: 1 });
         }
-        if (esp) { fanfare(); celebrate(w, esp); brilloDorado(w); evento('especial-' + (w === coin ? w.items[idx][2] : w.items[idx][0])); }
+        if (esp) { fanfare(); celebrate(w, esp); brilloDorado(w); evento('especial-' + (w === coin ? w.items[idx][2] : w.items[idx][0])); if (ticket) setTimeout(function () { premio(ticket); }, 2800); }
         else { chime(w); celebrate(w); }
         syncBusy();
       }
