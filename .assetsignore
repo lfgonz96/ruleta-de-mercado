@@ -2,10 +2,13 @@
 .github
 .gitignore
 .assetsignore
+.dev.vars
 *.py
 *.md
 *.bak
 descripciones.json
 plantilla.html
+worker.js
 wrangler.*
+package*.json
 node_modules
