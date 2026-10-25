@@ -205,6 +205,11 @@ dialog.rk::backdrop { background: rgba(0, 0, 0, 0.6); }
 .rk-list .n { font-family: var(--f-mono); font-weight: 600; }
 .rk-list li.yo { background: var(--chip); }
 .rk-list li.top1 .pos::before { content: '👑'; margin-right: 2px; }
+.rk section { display: flex; flex-direction: column; gap: 10px; }
+.rk-links { margin: 0; }
+.rk-link { font: inherit; font-size: 13px; color: var(--ink); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+.rk-code { margin: 0; padding: 14px; text-align: center; font-family: var(--f-mono); font-size: 22px; font-weight: 600; letter-spacing: 0.08em; background: var(--chip); border: 2px dashed var(--crypto); border-radius: 10px; user-select: all; }
+.rk-form input + input { margin-top: 0; }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 60; max-width: min(520px, calc(100% - 32px)); background: var(--ink); color: var(--bg); padding: 12px 16px; border-radius: 12px; font-size: 14px; font-weight: 600; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); }
 </style>
 </head>
@@ -296,13 +301,36 @@ dialog.rk::backdrop { background: rgba(0, 0, 0, 0.6); }
 <dialog class="rk" id="rank" aria-labelledby="rank-h">
   <div class="rk-in">
     <div class="rk-head"><h2 id="rank-h">Ranking de magníficas</h2><button class="btn-sec" id="rank-x" type="button">Cerrar</button></div>
-    <p class="rk-note">Suma 1 cada vez que te sale una de las 7 magníficas, Bitcoin o Ethereum en un giro libre (no cuenta el sorteo de la semana). El sorteo lo hace el servidor, así que no se puede falsear.</p>
-    <p class="rk-pend" id="rank-pend" hidden>🏆 ¡Te salió una y todavía no la sumaste! Poné un alias para entrar al ranking.</p>
-    <form class="rk-form" id="rank-form" autocomplete="off">
-      <label for="rank-alias">Tu alias (3 a 16 caracteres, inventado)</label>
-      <input id="rank-alias" type="text" minlength="3" maxlength="16" required>
-      <button class="btn-all" type="submit">Guardar</button>
-    </form>
+    <p class="rk-note">Suma 1 cada vez que te sale una de las 7 magníficas, Bitcoin o Ethereum en un giro libre (no cuenta el sorteo de la semana). El sorteo lo hace el servidor, así que no se puede falsear. Jugar no requiere alias: es solo para aparecer en el ranking.</p>
+    <p class="rk-pend" id="rank-pend" hidden>🏆 ¡Te salió una y todavía no la sumaste! Creá tu alias para entrar al ranking.</p>
+
+    <section id="rk-sin" hidden>
+      <form class="rk-form" id="rank-form" autocomplete="off">
+        <label for="rank-alias">Elegí un alias inventado (3 a 16 caracteres)</label>
+        <input id="rank-alias" type="text" minlength="3" maxlength="16" required>
+        <button class="btn-all" type="submit">Crear alias</button>
+      </form>
+      <p class="rk-links"><button class="rk-link" id="rk-tengo" type="button">Ya tengo un código de recuperación</button></p>
+      <form class="rk-form" id="rank-login" autocomplete="off" hidden>
+        <label for="login-alias">Entrá con tu alias y tu código</label>
+        <input id="login-alias" type="text" maxlength="16" placeholder="Alias" required>
+        <input id="login-codigo" type="text" maxlength="20" placeholder="XXXX-XXXX-XXXX" required>
+        <button class="btn-all" type="submit">Entrar</button>
+      </form>
+      <button class="btn-sec" id="rk-omitir" type="button">Seguir sin alias</button>
+    </section>
+
+    <section id="rk-codigo" hidden>
+      <p class="rk-note"><b>Guardá este código.</b> Es la única forma de usar tu alias <b id="rk-codigo-alias"></b> desde otro celular o computadora, y no lo podemos recuperar si lo perdés.</p>
+      <p class="rk-code" id="rk-codigo-txt" translate="no"></p>
+      <div class="rk-form"><button class="btn-sec" id="rk-copiar" type="button">Copiar código</button><button class="btn-all" id="rk-listo" type="button">Listo, ya lo guardé</button></div>
+    </section>
+
+    <section id="rk-con" hidden>
+      <p class="rk-note">Jugás como <b id="rk-yo"></b>.</p>
+      <div class="rk-form"><button class="btn-sec" id="rk-salir" type="button">Salir de este alias</button><button class="btn-sec" id="rk-nuevo" type="button">Generar código nuevo</button></div>
+    </section>
+
     <p class="rk-msg" id="rank-msg" role="status"></p>
     <ol class="rk-list" id="rank-list"></ol>
     <p class="rk-foot" id="rank-foot"></p>
@@ -1170,14 +1198,20 @@ dialog.rk::backdrop { background: rgba(0, 0, 0, 0.6); }
 
   // ===== Ranking de magníficas =====
   // El sorteo "libre" lo hace el servidor (/api/giro) y entrega un ticket; si sale una magnífica, Bitcoin o Ethereum,
-  // el ticket se canjea por +1 en el ranking. Si el servidor no responde, la ruleta funciona igual (sin ranking).
+  // el ticket se canjea por +1 en el ranking del alias. El alias se protege con un código de recuperación (sin contraseñas).
+  // Si el servidor no responde, la ruleta funciona igual (sin ranking). Jugar nunca exige alias.
   var API = { on: location.protocol.indexOf('http') === 0, fallos: 0, pend: [] };
-  var yo = { alias: '', dueno: '' };
-  try { yo.alias = localStorage.getItem('ruleta-alias') || ''; yo.dueno = localStorage.getItem('ruleta-dueno') || ''; } catch (e) {}
-  if (!/^[a-f0-9]{32}$/.test(yo.dueno)) {
-    var rb = new Uint8Array(16); crypto.getRandomValues(rb);
-    yo.dueno = Array.prototype.map.call(rb, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
-    try { localStorage.setItem('ruleta-dueno', yo.dueno); } catch (e) {}
+  var yo = { alias: '', codigo: '', omitir: false };
+  try {
+    yo.alias = localStorage.getItem('ruleta-alias') || ''; yo.codigo = localStorage.getItem('ruleta-codigo') || '';
+    yo.omitir = localStorage.getItem('ruleta-omitir') === '1';
+  } catch (e) {}
+  if (!yo.codigo) yo.alias = '';
+  function guardarYo() {
+    try {
+      if (yo.alias) { localStorage.setItem('ruleta-alias', yo.alias); localStorage.setItem('ruleta-codigo', yo.codigo); }
+      else { localStorage.removeItem('ruleta-alias'); localStorage.removeItem('ruleta-codigo'); }
+    } catch (e) {}
   }
   function api(ruta, cuerpo, ms) {
     var ctl = window.AbortController ? new AbortController() : null;
@@ -1204,7 +1238,10 @@ dialog.rk::backdrop { background: rgba(0, 0, 0, 0.6); }
     clearTimeout(toastT); toastT = setTimeout(function () { toastEl.hidden = true; }, 8000);
   }
   var rkEl = $('#rank'), rkMsg = $('#rank-msg'), rkList = $('#rank-list'), rkAlias = $('#rank-alias'), rkPend = $('#rank-pend'), rkFoot = $('#rank-foot');
+  var rkSin = $('#rk-sin'), rkCodigo = $('#rk-codigo'), rkCon = $('#rk-con'), rkLogin = $('#rank-login'), codigoNuevoMostrado = '';
   function aliasOk(a) { return a.length >= 3 && a.length <= 16 && /^[\p{L}\p{N} ._-]+$/u.test(a); }
+  function limpiarAlias(v) { return v.replace(/\s+/g, ' ').trim(); }
+
   function pintarRanking(d) {
     rkList.replaceChildren();
     if (!d || !d.top || !d.top.length) { rkList.append(h('li', {}, h('span', { class: 'pos', text: '' }), h('span', { class: 'al', text: 'Todavía no hay nadie. ¡Sé el primero!' }), h('span', { class: 'n', text: '' }))); rkFoot.textContent = ''; return; }
@@ -1221,26 +1258,43 @@ dialog.rk::backdrop { background: rgba(0, 0, 0, 0.6); }
       else { rkList.replaceChildren(); rkMsg.textContent = 'El ranking todavía no está activo.'; }
     }).catch(function () { rkMsg.textContent = 'No se pudo cargar el ranking. Probá de nuevo en un rato.'; });
   }
+  // Muestra la sección que corresponde: sin alias / mostrando el código nuevo / con alias
+  function vistaRanking() {
+    rkPend.hidden = !API.pend.length;
+    rkSin.hidden = !!yo.alias || !!codigoNuevoMostrado;
+    rkCodigo.hidden = !codigoNuevoMostrado;
+    rkCon.hidden = !yo.alias || !!codigoNuevoMostrado;
+    if (yo.alias) $('#rk-yo').textContent = yo.alias;
+  }
   function abrirRanking() {
     evento('ranking-abrir');
-    rkMsg.textContent = ''; rkAlias.value = yo.alias; rkPend.hidden = !API.pend.length;
+    rkMsg.textContent = ''; rkAlias.value = ''; rkLogin.hidden = true;
+    vistaRanking();
     if (rkEl.showModal) { if (!rkEl.open) rkEl.showModal(); } else rkEl.setAttribute('open', '');
     cargarRanking();
   }
-  function cerrarRanking() { if (rkEl.close) rkEl.close(); else rkEl.removeAttribute('open'); }
+  function cerrarRanking() {
+    if (codigoNuevoMostrado) { rkMsg.textContent = 'Primero copiá o anotá tu código y tocá "Listo, ya lo guardé".'; return; }
+    if (!yo.alias && !yo.omitir) { yo.omitir = true; try { localStorage.setItem('ruleta-omitir', '1'); } catch (e) {} }
+    if (rkEl.close) rkEl.close(); else rkEl.removeAttribute('open');
+  }
+  function mostrarCodigo(alias, codigo) {
+    codigoNuevoMostrado = codigo;
+    $('#rk-codigo-alias').textContent = alias; $('#rk-codigo-txt').textContent = codigo;
+    vistaRanking();
+  }
   function reclamarPend() {
     var t = API.pend.shift();
     if (!t) { rkPend.hidden = true; return Promise.resolve(); }
-    return api('/api/registrar', { ticket: t, alias: yo.alias, owner: yo.dueno }, 6000).then(function (r) {
+    return api('/api/registrar', { ticket: t, alias: yo.alias, codigo: yo.codigo }, 6000).then(function (r) {
       if (r.st === 200 && r.j.ok) {
         evento('ranking-suma');
         aviso('¡Sumaste 1 al ranking como ' + r.j.alias + '! Llevás ' + r.j.hits + ' (puesto ' + r.j.puesto + ').');
         return reclamarPend();
       }
-      if (r.j.error === 'alias-ocupado' || r.j.error === 'alias-invalido') {
-        API.pend.unshift(t); yo.alias = '';
-        try { localStorage.removeItem('ruleta-alias'); } catch (e) {}
-        abrirRanking(); rkMsg.textContent = r.j.mensaje || 'Ese alias no sirve. Elegí otro.';
+      if (r.j.error === 'codigo-incorrecto') {
+        API.pend.unshift(t); yo.alias = ''; yo.codigo = ''; guardarYo();
+        abrirRanking(); rkMsg.textContent = 'Tu código ya no sirve (¿lo cambiaste en otro dispositivo?). Entrá de nuevo con tu código nuevo.';
         return null;
       }
       if (r.j.error !== 'ya-canjeado') aviso(r.j.mensaje || 'No se pudo sumar al ranking.');
@@ -1251,19 +1305,66 @@ dialog.rk::backdrop { background: rgba(0, 0, 0, 0.6); }
     API.pend.push(ticket);
     if (yo.alias) reclamarPend(); else abrirRanking();
   }
+
+  // Crear alias
   $('#rank-form').addEventListener('submit', function (ev) {
     ev.preventDefault();
-    var a = rkAlias.value.replace(/\s+/g, ' ').trim();
+    var a = limpiarAlias(rkAlias.value);
     if (!aliasOk(a)) { rkMsg.textContent = 'Usá de 3 a 16 letras, números, espacios, punto, guion o guion bajo.'; return; }
-    yo.alias = a;
-    try { localStorage.setItem('ruleta-alias', a); } catch (e) {}
-    rkMsg.textContent = 'Alias guardado: ' + a;
+    rkMsg.textContent = 'Creando…';
+    api('/api/alias', { alias: a }, 6000).then(function (r) {
+      if (r.st === 200 && r.j.ok) {
+        evento('ranking-alias');
+        yo.alias = r.j.alias; yo.codigo = r.j.codigo.replace(/-/g, ''); guardarYo();
+        rkMsg.textContent = '';
+        mostrarCodigo(r.j.alias, r.j.codigo);
+      } else rkMsg.textContent = r.j.mensaje || 'No se pudo crear el alias. Probá de nuevo.';
+    }).catch(function () { rkMsg.textContent = 'Sin conexión con el ranking. Probá de nuevo.'; });
+  });
+  // Entrar con alias + código
+  $('#rk-tengo').addEventListener('click', function () { rkLogin.hidden = !rkLogin.hidden; if (!rkLogin.hidden) $('#login-alias').focus(); });
+  rkLogin.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var a = limpiarAlias($('#login-alias').value), c = $('#login-codigo').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    rkMsg.textContent = 'Entrando…';
+    api('/api/entrar', { alias: a, codigo: c }, 6000).then(function (r) {
+      if (r.st === 200 && r.j.ok) {
+        yo.alias = r.j.alias; yo.codigo = c; guardarYo();
+        rkMsg.textContent = 'Listo, entraste como ' + r.j.alias + '.';
+        evento('ranking-entrar'); vistaRanking();
+        if (API.pend.length) reclamarPend().then(cargarRanking); else cargarRanking();
+      } else rkMsg.textContent = r.j.mensaje || 'Alias o código incorrectos.';
+    }).catch(function () { rkMsg.textContent = 'Sin conexión con el ranking. Probá de nuevo.'; });
+  });
+  $('#rk-omitir').addEventListener('click', cerrarRanking);
+  $('#rk-listo').addEventListener('click', function () {
+    codigoNuevoMostrado = ''; vistaRanking();
     if (API.pend.length) reclamarPend().then(cargarRanking); else cargarRanking();
+  });
+  $('#rk-copiar').addEventListener('click', function () {
+    var btn = this, txt = $('#rk-codigo-txt').textContent;
+    function ok() { btn.textContent = '¡Copiado!'; setTimeout(function () { btn.textContent = 'Copiar código'; }, 1800); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok, function () {});
+  });
+  $('#rk-salir').addEventListener('click', function () {
+    yo.alias = ''; yo.codigo = ''; guardarYo(); rkMsg.textContent = 'Saliste de ese alias en este dispositivo.'; vistaRanking(); cargarRanking();
+  });
+  $('#rk-nuevo').addEventListener('click', function () {
+    if (!confirm('El código anterior dejará de servir. ¿Generar uno nuevo?')) return;
+    api('/api/codigo-nuevo', { alias: yo.alias, codigo: yo.codigo }, 6000).then(function (r) {
+      if (r.st === 200 && r.j.ok) { yo.codigo = r.j.codigo.replace(/-/g, ''); guardarYo(); mostrarCodigo(r.j.alias, r.j.codigo); }
+      else rkMsg.textContent = r.j.mensaje || 'No se pudo generar el código.';
+    }).catch(function () { rkMsg.textContent = 'Sin conexión con el ranking.'; });
   });
   $('#rank-x').addEventListener('click', cerrarRanking);
   rkEl.addEventListener('click', function (e) { if (e.target === rkEl) cerrarRanking(); });
+  rkEl.addEventListener('cancel', function (ev) { if (codigoNuevoMostrado) { ev.preventDefault(); rkMsg.textContent = 'Primero copiá o anotá tu código y tocá "Listo, ya lo guardé".'; return; } if (!yo.alias && !yo.omitir) { yo.omitir = true; try { localStorage.setItem('ruleta-omitir', '1'); } catch (e) {} } });
   var rankBtn = $('#rank-btn');
-  if (API.on) { rankBtn.hidden = false; rankBtn.addEventListener('click', abrirRanking); }
+  if (API.on) {
+    rankBtn.hidden = false; rankBtn.addEventListener('click', abrirRanking);
+    // Primera visita: ofrecer crear el alias (se puede saltear y jugar igual)
+    if (!yo.alias && !yo.omitir) setTimeout(function () { if (!stock.spinning && !coin.spinning && !rkEl.open) abrirRanking(); }, 1500);
+  }
 
   // Pide el sorteo al servidor (si responde) y recién ahí gira.
   function spin(w, forced) {

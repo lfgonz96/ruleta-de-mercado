@@ -2,11 +2,14 @@
 // Todo lo que no empieza con /api/ lo atiende Cloudflare como archivos estáticos (la web y los audios).
 //
 //   POST /api/giro      -> el SERVIDOR sortea (acción o token) y entrega un ticket firmado
-//   POST /api/registrar -> canjea un ticket que salió "especial" por +1 en el ranking (con un alias)
+//   POST /api/alias     -> crea un alias y entrega un código de recuperación (se muestra una sola vez)
+//   POST /api/entrar    -> entra con alias + código (para usar el mismo alias en otro dispositivo)
+//   POST /api/codigo-nuevo -> cambia el código (invalida el anterior)
+//   POST /api/registrar -> canjea un ticket que salió "especial" por +1 en el ranking (con alias + código)
 //   GET  /api/ranking   -> top del ranking
 //
 // Qué cuenta: las 7 magníficas (AAPL, MSFT, GOOGL, GOOG, AMZN, NVDA, META, TSLA), Bitcoin y Ethereum.
-// Qué guarda: alias, cantidad de aciertos y un hash del "dueño" del alias. No guarda IP ni datos personales.
+// Qué guarda: alias, cantidad de aciertos y el hash del código de recuperación. No guarda IP ni datos personales.
 //
 // Necesita: base D1 con el nombre de binding DB, y el secreto TICKET_SECRET (ver las instrucciones).
 
@@ -142,13 +145,82 @@ async function giro(request, env) {
   return json({ ticket, key: item });
 }
 
+// ---- Cuentas: alias + código de recuperación (sin contraseñas propias) ----
+// El servidor genera un código al crear el alias, lo muestra UNA vez y solo guarda su hash.
+// Con ese código se entra desde otro dispositivo y se canjean los aciertos.
+const ALFABETO = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // sin I, L, O, 0, 1 para que no se confundan
+function nuevoCodigo() {
+  let c = '';
+  for (let i = 0; i < 12; i++) c += ALFABETO[azar(ALFABETO.length)];
+  return c.slice(0, 4) + '-' + c.slice(4, 8) + '-' + c.slice(8);
+}
+function limpiarCodigo(c) {
+  if (typeof c !== 'string' || c.length > 40) return null;
+  const l = c.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return /^[A-Z0-9]{12}$/.test(l) ? l : null;
+}
+const hashCodigo = (l) => sha256hex('ruleta-codigo|' + l);
+const MSG_ALIAS = 'Alias de 3 a 16 letras, números, espacios, punto, guion o guion bajo, sin links ni palabras prohibidas.';
+
+// Devuelve { fila } si alias+código coinciden; si no, { error: Response }
+async function autenticar(env, aliasIn, codigoIn) {
+  const alias = typeof aliasIn === 'string' ? aliasIn.normalize('NFC').trim().replace(/\s+/g, ' ') : '';
+  const cod = limpiarCodigo(codigoIn);
+  if (!alias || !cod) return { error: json({ error: 'pedido-invalido' }, 400) };
+  await asegurarTablas(env);
+  const fila = await env.DB.prepare('SELECT alias, owner, hits FROM scores WHERE alias = ?1').bind(alias).first();
+  const h = await hashCodigo(cod);
+  if (!fila || fila.owner !== h) return { error: json({ error: 'codigo-incorrecto', mensaje: 'Alias o código incorrectos.' }, 403) };
+  return { fila, hash: h };
+}
+
+async function crearAlias(request, env) {
+  if (!env.DB) return json({ error: 'no-configurado' }, 503);
+  const b = await cuerpo(request);
+  if (!b) return json({ error: 'pedido-invalido' }, 400);
+  const alias = aliasValido(b.alias);
+  if (!alias) return json({ error: 'alias-invalido', mensaje: MSG_ALIAS }, 400);
+  await asegurarTablas(env);
+  const ahora = Date.now();
+  // limpieza: aliases creados que nunca sumaron nada y tienen más de 30 días
+  await env.DB.prepare('DELETE FROM scores WHERE hits = 0 AND last_ts < ?1').bind(ahora - 30 * 86400000).run();
+  const codigo = nuevoCodigo();
+  const h = await hashCodigo(codigo.replace(/-/g, ''));
+  try {
+    await env.DB.prepare('INSERT INTO scores (alias, owner, hits, last_ts) VALUES (?1, ?2, 0, ?3)').bind(alias, h, ahora).run();
+  } catch (e) {
+    return json({ error: 'alias-ocupado', mensaje: 'Ese alias ya lo usa otra persona. Elegí otro.' }, 409);
+  }
+  return json({ ok: true, alias, codigo });
+}
+
+async function entrar(request, env) {
+  if (!env.DB) return json({ error: 'no-configurado' }, 503);
+  const b = await cuerpo(request);
+  if (!b) return json({ error: 'pedido-invalido' }, 400);
+  const r = await autenticar(env, b.alias, b.codigo);
+  if (r.error) return r.error;
+  return json({ ok: true, alias: r.fila.alias, hits: r.fila.hits });
+}
+
+async function codigoNuevo(request, env) {
+  if (!env.DB) return json({ error: 'no-configurado' }, 503);
+  const b = await cuerpo(request);
+  if (!b) return json({ error: 'pedido-invalido' }, 400);
+  const r = await autenticar(env, b.alias, b.codigo);
+  if (r.error) return r.error;
+  const codigo = nuevoCodigo();
+  await env.DB.prepare('UPDATE scores SET owner = ?1 WHERE alias = ?2').bind(await hashCodigo(codigo.replace(/-/g, '')), r.fila.alias).run();
+  return json({ ok: true, alias: r.fila.alias, codigo });
+}
+
 async function registrar(request, env) {
   if (!env.TICKET_SECRET || !env.DB) return json({ error: 'no-configurado' }, 503);
   const b = await cuerpo(request);
   if (!b) return json({ error: 'pedido-invalido' }, 400);
-  const alias = aliasValido(b.alias);
-  if (!alias) return json({ error: 'alias-invalido', mensaje: 'Alias de 3 a 16 letras, números, espacios, punto, guion o guion bajo, sin links ni palabras prohibidas.' }, 400);
-  if (typeof b.owner !== 'string' || !/^[a-f0-9]{32,64}$/.test(b.owner)) return json({ error: 'pedido-invalido' }, 400);
+  const r = await autenticar(env, b.alias, b.codigo);
+  if (r.error) return r.error;
+  const alias = r.fila.alias;
   const t = await verificar(env, b.ticket);
   if (!t || typeof t.t !== 'number') return json({ error: 'ticket-invalido' }, 400);
   const edad = Date.now() - t.t;
@@ -157,15 +229,11 @@ async function registrar(request, env) {
   const especial = (t.w === 'stock' && MAGNIFICAS.has(t.k)) || (t.w === 'coin' && COINS_ESPECIALES.has(t.k));
   if (!especial) return json({ error: 'no-es-especial' }, 400);
 
-  await asegurarTablas(env);
-  const dueno = await sha256hex('ruleta|' + b.owner);
-  const previo = await env.DB.prepare('SELECT owner FROM scores WHERE alias = ?1').bind(alias).first();
-  if (previo && previo.owner !== dueno) return json({ error: 'alias-ocupado', mensaje: 'Ese alias ya lo usa otra persona. Elegí otro.' }, 409);
   const ahora = Date.now();
   try {
     await env.DB.batch([
       env.DB.prepare('INSERT INTO hits (nonce, alias, item, ts) VALUES (?1, ?2, ?3, ?4)').bind(t.n, alias, t.w + ':' + t.k, ahora),
-      env.DB.prepare('INSERT INTO scores (alias, owner, hits, last_ts) VALUES (?1, ?2, 1, ?3) ON CONFLICT(alias) DO UPDATE SET hits = hits + 1, last_ts = ?3').bind(alias, dueno, ahora)
+      env.DB.prepare('UPDATE scores SET hits = hits + 1, last_ts = ?2 WHERE alias = ?1').bind(alias, ahora)
     ]);
   } catch (e) {
     return json({ error: 'ya-canjeado', mensaje: 'Ese giro ya se había sumado.' }, 409);
@@ -178,8 +246,8 @@ async function registrar(request, env) {
 async function ranking(request, env) {
   if (!env.DB) return json({ error: 'no-configurado' }, 503);
   await asegurarTablas(env);
-  const top = await env.DB.prepare('SELECT alias, hits FROM scores ORDER BY hits DESC, last_ts ASC LIMIT ?1').bind(TOP_MAX).all();
-  const total = await env.DB.prepare('SELECT COALESCE(SUM(hits),0) AS n, COUNT(*) AS j FROM scores').first();
+  const top = await env.DB.prepare('SELECT alias, hits FROM scores WHERE hits > 0 ORDER BY hits DESC, last_ts ASC LIMIT ?1').bind(TOP_MAX).all();
+  const total = await env.DB.prepare('SELECT COALESCE(SUM(hits),0) AS n, COUNT(*) AS j FROM scores WHERE hits > 0').first();
   const ult = await env.DB.prepare('SELECT alias, item, ts FROM hits ORDER BY ts DESC LIMIT 5').all();
   return json({ top: top.results, aciertos: total.n, jugadores: total.j, ultimos: ult.results }, 200, { 'cache-control': 'public, max-age=15' });
 }
@@ -197,6 +265,18 @@ export default {
       if (url.pathname === '/api/registrar' && request.method === 'POST') {
         if (!limitar(ip, 'reg', 12, 60000)) return json({ error: 'demasiados-pedidos' }, 429);
         return await registrar(request, env);
+      }
+      if (url.pathname === '/api/alias' && request.method === 'POST') {
+        if (!limitar(ip, 'alias', 6, 60000)) return json({ error: 'demasiados-pedidos' }, 429);
+        return await crearAlias(request, env);
+      }
+      if (url.pathname === '/api/entrar' && request.method === 'POST') {
+        if (!limitar(ip, 'entrar', 10, 60000)) return json({ error: 'demasiados-pedidos' }, 429);
+        return await entrar(request, env);
+      }
+      if (url.pathname === '/api/codigo-nuevo' && request.method === 'POST') {
+        if (!limitar(ip, 'codnuevo', 4, 60000)) return json({ error: 'demasiados-pedidos' }, 429);
+        return await codigoNuevo(request, env);
       }
       if (url.pathname === '/api/ranking' && request.method === 'GET') {
         if (!limitar(ip, 'rank', 60, 60000)) return json({ error: 'demasiados-pedidos' }, 429);
