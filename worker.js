@@ -4,6 +4,7 @@
 //   POST /api/giro      -> el SERVIDOR sortea (acción o token) y entrega un ticket firmado
 //   POST /api/alias     -> crea un alias y entrega un código de recuperación (se muestra una sola vez)
 //   POST /api/entrar    -> entra con alias + código (para usar el mismo alias en otro dispositivo)
+//   POST /api/autor     -> dice si el alias (con su código) es el del autor (variable AUTOR_ALIAS); solo muestra herramientas de edición
 //   POST /api/codigo-nuevo -> cambia el código (invalida el anterior)
 //   POST /api/registrar -> canjea un ticket que salió "especial" por +1 en el ranking (con alias + código)
 //   GET  /api/ranking   -> top del ranking
@@ -203,6 +204,16 @@ async function entrar(request, env) {
   return json({ ok: true, alias: r.fila.alias, hits: r.fila.hits });
 }
 
+async function autor(request, env) {
+  if (!env.DB) return json({ error: 'no-configurado' }, 503);
+  const b = await cuerpo(request);
+  if (!b) return json({ error: 'pedido-invalido' }, 400);
+  const r = await autenticar(env, b.alias, b.codigo);
+  if (r.error) return r.error;
+  const lista = String(env.AUTOR_ALIAS || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+  return json({ ok: true, autor: lista.includes(String(r.fila.alias).toLowerCase()) });
+}
+
 async function codigoNuevo(request, env) {
   if (!env.DB) return json({ error: 'no-configurado' }, 503);
   const b = await cuerpo(request);
@@ -273,6 +284,10 @@ export default {
       if (url.pathname === '/api/entrar' && request.method === 'POST') {
         if (!limitar(ip, 'entrar', 10, 60000)) return json({ error: 'demasiados-pedidos' }, 429);
         return await entrar(request, env);
+      }
+      if (url.pathname === '/api/autor' && request.method === 'POST') {
+        if (!limitar(ip, 'autor', 20, 60000)) return json({ error: 'demasiados-pedidos' }, 429);
+        return await autor(request, env);
       }
       if (url.pathname === '/api/codigo-nuevo' && request.method === 'POST') {
         if (!limitar(ip, 'codnuevo', 4, 60000)) return json({ error: 'demasiados-pedidos' }, 429);
